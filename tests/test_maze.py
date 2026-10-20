@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from procgen_jax.maze import MazeEnv, generate_maze
+from procgen_jax.games.maze import MazeEnv, generate_maze
 from procgen_jax.objects import GOAL, SPACE, WALL
 
 
@@ -88,27 +88,27 @@ def test_reset_structure():
     env = MazeEnv(world_dim=15)
     state = env.reset(jax.random.PRNGKey(0))
 
-    assert state.grid.shape == (15, 15)
-    assert state.agent.shape == (2,)
-    assert state.steps.shape == ()
+    assert state.env_state.grid.shape == (15, 15)
+    assert state.env_state.agent.shape == (2,)
+    assert state.env_state.steps.shape == ()
     assert state.done.shape == ()
     assert not bool(state.done)
-    assert int(state.steps) == 0
-    assert np.array_equal(np.asarray(state.agent), [0, 0])
+    assert int(state.env_state.steps) == 0
+    assert np.array_equal(np.asarray(state.env_state.agent), [0, 0])
 
 
 def test_reset_places_exactly_one_goal():
     env = MazeEnv(world_dim=15)
     state = env.reset(jax.random.PRNGKey(0))
 
-    assert int(jnp.sum(state.grid == GOAL)) == 1
+    assert int(jnp.sum(state.env_state.grid == GOAL)) == 1
 
 
 def test_goal_is_reachable_from_the_agent():
     env = MazeEnv(world_dim=15)
     for seed in range(5):
         state = env.reset(jax.random.PRNGKey(seed))
-        grid = np.asarray(state.grid)
+        grid = np.asarray(state.env_state.grid)
 
         reachable = bfs_reachable(grid, (0, 0))
         goal = tuple(np.argwhere(grid == GOAL)[0])
@@ -121,7 +121,7 @@ def test_reset_is_deterministic():
     first = env.reset(jax.random.PRNGKey(7))
     second = env.reset(jax.random.PRNGKey(7))
 
-    assert np.array_equal(np.asarray(first.grid), np.asarray(second.grid))
+    assert np.array_equal(np.asarray(first.env_state.grid), np.asarray(second.env_state.grid))
 
 
 def test_reset_differs_across_keys():
@@ -130,4 +130,4 @@ def test_reset_differs_across_keys():
     first = env.reset(jax.random.PRNGKey(7))
     second = env.reset(jax.random.PRNGKey(8))
 
-    assert not np.array_equal(np.asarray(first.grid), np.asarray(second.grid))
+    assert not np.array_equal(np.asarray(first.env_state.grid), np.asarray(second.env_state.grid))

@@ -35,8 +35,9 @@ env = MazeEnv(world_dim=15)  # 15 = ProcGen's "easy" maze
 state = env.reset(jax.random.PRNGKey(0))
 
 for _ in range(500):
-    state, reward, done = env.step(state, jax.random.randint(jax.random.PRNGKey(1), (), 0, 9))
-    obs = env.observation(state)  # (64, 64, 3) uint8
+    action = jax.random.randint(jax.random.PRNGKey(1), (), 0, 9)
+    state = env.step(state, action)  # state.obs is (64, 64, 3) uint8
+    print(float(state.reward), bool(state.done), state.info['terminated'])
 ```
 
 Vectorised, and fully jit-able:
@@ -44,24 +45,24 @@ Vectorised, and fully jit-able:
 ```python
 import jax
 from procgen_jax import MazeEnv
-from procgen_jax.maze import vmap_reset
 
 env = MazeEnv(world_dim=15)
 
 
 @jax.jit
 def rollout(keys):
-    state = vmap_reset(env, keys)  # (B, ...) pytree
+    state = jax.vmap(env.reset)(keys)  # (B, ...) pytree
+    actions = jax.random.randint(keys[0], (128, keys.shape[0]), 0, 9)
 
     def body(carry, action):
-        state = carry
-        state, reward, done = jax.vmap(env.step)(state, action)
-        return state, reward
+        state = jax.vmap(env.step)(carry, action)
+        return state, state.reward
 
-    return jax.lax.scan(body, state, jax.random.randint(keys[0], (128, keys.shape[0]), 0, 9))
+    states, rewards = jax.lax.scan(body, state, actions)
+    return states.obs, rewards
 
 
-states, rewards = rollout(jax.random.split(jax.random.PRNGKey(0), 64))
+observations, rewards = rollout(jax.random.split(jax.random.PRNGKey(0), 64))
 ```
 
 Run the bundled demo (random policy, prints throughput):
@@ -72,20 +73,26 @@ pixi run demo
 
 ## Environment API
 
-`MazeEnv` is a functional environment: the state is a `NamedTuple` pytree, so it can
-be passed through `jit`, `vmap`, `scan` and `pmap` without special cases.
+The interface follows Brax's `Env`/`State` design rather than a gym-style
+`(obs, reward, done, info)` tuple: the observation lives *inside* the state, so a
+rollout is a pure `lax.scan` over pytrees with no per-step host round-trip.
 
-| Method                     | Returns                    |
-| -------------------------- | -------------------------- |
-| `env.reset(key)`           | `MazeState`                |
-| `env.step(state, action)`  | `(state, reward, done)`    |
-| `env.observation(state)`   | `uint8[64, 64, 3]`         |
+| Method                    | Returns                          |
+| ------------------------- | -------------------------------- |
+| `env.reset(key)`          | `State`                          |
+| `env.step(state, action)` | `State`                          |
 
-`done` describes the transition; the returned `state` is already auto-reset, which
-matches ProcGen's vectorised-env semantics.
+`State` is a `NamedTuple` with `env_state` (the game-specific state), `obs`
+(`uint8[64, 64, 3]`), `reward`, `done` and `info`.
 
-`MazeState` holds `grid` (the tile map), `agent` (x, y), `steps`, `done` and `key`,
-so an episode is a pure function of its starting key.
+Auto-reset is built in: on the step where an episode ends, `env_state` and `obs`
+are the *fresh episode*, while `done` (and `info['terminated']` /
+`info['truncated']`) still describe the transition that just finished. That is
+gymnax's semantics, and it keeps `scan` shapes static. `info['final_obs']` keeps
+the last frame of the finished episode.
+
+`MazeState` holds `grid` (the tile map), `agent` (x, y), `steps` and `key`, so an
+episode is a pure function of its starting key.
 
 ## Implementation notes
 

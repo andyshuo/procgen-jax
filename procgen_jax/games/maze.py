@@ -1,6 +1,6 @@
 """A pure-JAX port of ProcGen's ``maze`` game.
 
-The rules mirror ``procgen/src/games/maze.cpp`` and ``procgen/src/mazegen.cpp``:
+Rules follow ``procgen/src/games/maze.cpp`` and ``procgen/src/mazegen.cpp``:
 
 * levels are perfect mazes built with Kruskal's algorithm on an odd-sized grid;
 * the agent starts in the top-left cell and moves one cell per step;
@@ -8,10 +8,9 @@ The rules mirror ``procgen/src/games/maze.cpp`` and ``procgen/src/mazegen.cpp``:
   and horizontal movement cancels vertical movement;
 * reaching the goal yields +10 and ends the episode; the timeout is 500 steps.
 
-Known deviations from the original, all deliberate for a first milestone:
+Deliberate first-milestone deviations:
 
-* the maze always fills the world (ProcGen randomises ``maze_dim`` and centres it
-  inside ``world_dim``);
+* the maze always fills the world (ProcGen randomises ``maze_dim`` per episode);
 * rendering uses flat tiles instead of Kenney sprite assets;
 * the action space keeps ProcGen's 15 slots, but only 0-8 are meaningful.
 """
@@ -21,6 +20,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
+from procgen_jax.base import Env, State
 from procgen_jax.objects import GOAL, SPACE, WALL
 from procgen_jax.render import render_observation
 
@@ -33,15 +33,17 @@ NUM_ACTIONS = 15
 
 
 class MazeState(NamedTuple):
-    """Everything needed to continue an episode (a JAX pytree)."""
+    """Game-specific state: everything needed to continue an episode."""
 
     grid: jax.Array  # (world_dim, world_dim) int32 of WALL/SPACE/GOAL
     agent: jax.Array  # (2,) int32, (x, y) tile coordinates
     steps: jax.Array  # () int32
-    done: jax.Array  # () bool
     key: jax.Array  # (2,) uint32
 
 
+# --------------------------------------------------------------------------- #
+# level generation
+# --------------------------------------------------------------------------- #
 def _find(parents, node):
     """Root of ``node`` in a union-find array (no path compression)."""
 
@@ -117,11 +119,11 @@ def generate_maze(key: jax.Array, maze_dim: int) -> jax.Array:
     return grid.at[ys, xs].set(SPACE)
 
 
-class MazeEnv:
+# --------------------------------------------------------------------------- #
+# environment
+# --------------------------------------------------------------------------- #
+class MazeEnv(Env):
     """ProcGen's ``maze`` game as a functional, jit-friendly environment."""
-
-    num_actions = NUM_ACTIONS
-    obs_shape = (64, 64, 3)
 
     def __init__(
         self,
@@ -134,16 +136,49 @@ class MazeEnv:
             raise ValueError(f'world_dim must be odd and >= 3, got {world_dim}')
         self.world_dim = world_dim
         self.timeout = timeout
-        # Accepted for API compatibility with ProcGen's env kwargs; the JAX
-        # implementation derives every level from the episode key instead.
+        # Accepted for API compatibility with ProcGen's env kwargs; levels are
+        # derived from the episode key instead of a level id.
         self.start_level = start_level
         self.num_levels = num_levels
 
-    # ------------------------------------------------------------------ #
-    # environment API
-    # ------------------------------------------------------------------ #
-    def reset(self, key: jax.Array) -> MazeState:
-        """Start a new episode from ``key``."""
+    # -- Env interface ----------------------------------------------------- #
+    @property
+    def action_size(self) -> int:
+        return NUM_ACTIONS
+
+    @property
+    def observation_shape(self):
+        return (64, 64, 3)
+
+    def reset(self, key: jax.Array) -> State:
+        return self.state_from(self.reset_env_state(key))
+
+    def step(self, state: State, action: jax.Array) -> State:
+        env_state, reward = self.step_env_state(state.env_state, action)
+
+        terminated = reward > 0
+        truncated = env_state.steps >= self.timeout
+        done = jnp.logical_or(terminated, truncated)
+
+        reset_key, _ = jax.random.split(state.env_state.key)
+        fresh = self.reset_env_state(reset_key)
+        merged = jax.tree.map(lambda reset, stepped: jnp.where(done, reset, stepped), fresh, env_state)
+
+        # The terminal frame of the episode is the one the agent acted on. It is
+        # free to keep (``state.obs``) and, unlike a post-move render, it still
+        # shows the goal tile the agent just stepped onto -- the agent sprite
+        # covers the goal once they share a tile.
+        return self.state_from(
+            merged,
+            reward=reward,
+            done=done,
+            terminated=terminated,
+            truncated=truncated,
+            final_obs=state.obs,
+        )
+
+    # -- game rules -------------------------------------------------------- #
+    def reset_env_state(self, key: jax.Array) -> MazeState:
         maze_key, goal_key = jax.random.split(key)
         grid = generate_maze(maze_key, self.world_dim)
 
@@ -151,65 +186,59 @@ class MazeEnv:
         goal_cell = jax.random.randint(goal_key, (), 0, cells * cells)
         goal_y = (goal_cell // cells) * 2
         goal_x = (goal_cell % cells) * 2
-        grid = grid.at[goal_y, goal_x].set(GOAL)
 
         return MazeState(
-            grid=grid,
+            grid=grid.at[goal_y, goal_x].set(GOAL),
             agent=jnp.zeros((2,), dtype=jnp.int32),
             steps=jnp.zeros((), dtype=jnp.int32),
-            done=jnp.zeros((), dtype=jnp.bool_),
             key=key,
         )
 
-    def step(self, state: MazeState, action: jax.Array):
-        """Advance one step. Returns ``(state, reward, done)``.
-
-        ``done`` refers to the transition; ``state`` is already auto-reset when the
-        episode ended, matching ProcGen's vectorised-env behaviour.
-        """
+    def step_env_state(self, env_state: MazeState, action: jax.Array):
         action = jnp.asarray(action, dtype=jnp.int32)
         vx = action // 3 - 1
         vy = action % 3 - 1
         vy = jnp.where(vx != 0, 0, vy)  # maze: horizontal movement wins
 
-        x, y = state.agent[0], state.agent[1]
+        x, y = env_state.agent[0], env_state.agent[1]
         next_x = jnp.clip(x + vx, 0, self.world_dim - 1)
         next_y = jnp.clip(y + vy, 0, self.world_dim - 1)
 
-        blocked = state.grid[next_y, next_x] == WALL
+        blocked = env_state.grid[next_y, next_x] == WALL
         x = jnp.where(blocked, x, next_x)
         y = jnp.where(blocked, y, next_y)
 
-        reached = state.grid[y, x] == GOAL
+        reached = env_state.grid[y, x] == GOAL
         reward = jnp.where(reached, GOAL_REWARD, 0.0).astype(jnp.float32)
-        grid = jnp.where(reached, state.grid.at[y, x].set(SPACE), state.grid)
-
-        steps = state.steps + 1
-        done = jnp.logical_or(reached, steps >= self.timeout)
 
         stepped = MazeState(
-            grid=grid,
+            grid=env_state.grid,
             agent=jnp.stack([x, y]).astype(jnp.int32),
-            steps=steps,
-            done=done,
-            key=state.key,
+            steps=env_state.steps + 1,
+            key=env_state.key,
         )
-        episode_key, _ = jax.random.split(state.key)
-        fresh = self.reset(episode_key)
-        state = jax.lax.cond(done, lambda _: fresh, lambda _: stepped, None)
-        return state, reward, done
+        return stepped, reward
 
-    def observation(self, state: MazeState) -> jax.Array:
-        """Agent-centred 64x64x3 uint8 view of the maze."""
-        return render_observation(state.grid, state.agent, self.world_dim)
-
-
-# --------------------------------------------------------------------------- #
-# vectorised helpers
-# --------------------------------------------------------------------------- #
-def vmap_reset(env: MazeEnv, keys: jax.Array) -> MazeState:
-    return jax.vmap(env.reset)(keys)
-
-
-def vmap_step(env: MazeEnv, state: MazeState, actions: jax.Array):
-    return jax.vmap(env.step)(state, actions)
+    # -- State construction ------------------------------------------------ #
+    def state_from(
+        self,
+        env_state: MazeState,
+        reward: jax.Array | float = 0.0,
+        done: jax.Array | bool = False,
+        terminated: jax.Array | bool = False,
+        truncated: jax.Array | bool = False,
+        final_obs: jax.Array | None = None,
+    ) -> State:
+        """Wrap a game state into a :class:`~procgen_jax.base.State`."""
+        obs = render_observation(env_state.grid, env_state.agent, self.world_dim)
+        return State(
+            env_state=env_state,
+            obs=obs,
+            reward=jnp.asarray(reward, dtype=jnp.float32),
+            done=jnp.asarray(done),
+            info={
+                'terminated': jnp.asarray(terminated),
+                'truncated': jnp.asarray(truncated),
+                'final_obs': obs if final_obs is None else final_obs,
+            },
+        )

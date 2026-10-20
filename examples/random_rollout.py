@@ -6,7 +6,6 @@ import jax
 import jax.numpy as jnp
 
 from procgen_jax import MazeEnv
-from procgen_jax.maze import vmap_reset
 
 
 def main() -> None:
@@ -15,20 +14,19 @@ def main() -> None:
 
     @jax.jit
     def rollout(key):
-        keys = jax.random.split(key, batch)
-        state = vmap_reset(env, keys)
+        state = jax.vmap(env.reset)(jax.random.split(key, batch))
         actions = jax.random.randint(key, (steps, batch), 0, 9)
 
         def body(carry, action):
             state, total = carry
-            state, reward, done = jax.vmap(env.step)(state, action)
-            return (state, total + reward), done
+            stepped = jax.vmap(env.step)(state, action)
+            return (stepped, total + stepped.reward), stepped.done
 
         return jax.lax.scan(body, (state, jnp.zeros((batch,))), actions)
 
     key = jax.random.PRNGKey(0)
 
-    # First call compiles; time the second one.
+    # First call compiles; time the ones after it.
     (_, totals), dones = rollout(key)
     jax.block_until_ready(totals)
 
@@ -40,7 +38,7 @@ def main() -> None:
     elapsed = time.perf_counter() - start
 
     total_steps = repetitions * batch * steps
-    observation = env.observation(env.reset(key))
+    observation = env.reset(key).obs
 
     print(f'observation shape {observation.shape} dtype {observation.dtype}')
     print(f'batch {batch} x {steps} steps x {repetitions} rollouts')

@@ -1,12 +1,11 @@
-"""Procedurally generated, pure-JAX maze environments.
+"""Procedurally generated environments, reimplemented in pure JAX.
 
-A from-scratch JAX implementation of OpenAI ProcGen's `maze` game. Everything —
-level generation, game rules and observation rendering — is expressed with
-`jax.numpy` and `lax` primitives, so a whole vectorised rollout can be compiled
-into a single `lax.scan`.
+The interface follows Brax's ``Env`` / ``State`` design: the state carries the
+observation, so a whole vectorised rollout compiles into one ``lax.scan``.
 """
 
-from procgen_jax.maze import MazeEnv, MazeState
+from procgen_jax.base import Env, State, Wrapper
+from procgen_jax.games.maze import MazeEnv
 from procgen_jax.version import __version__
 
-__all__ = ['MazeEnv', 'MazeState', '__version__']
+__all__ = ['Env', 'State', 'Wrapper', 'MazeEnv', '__version__']
