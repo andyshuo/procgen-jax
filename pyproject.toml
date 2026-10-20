@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "procgen-jax"
+version = "0.1.0"
+description = "OpenAI ProcGen reimplemented in pure JAX, so a whole rollout compiles into one lax.scan"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jax>=0.12",
+    "numpy>=2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff==0.17.1"]
+
+[tool.setuptools]
+packages = ["procgen_jax"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers --strict-config"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4"]
+ignore = ["E501", "E741"]
+
+[tool.ruff.format]
+quote-style = "single"

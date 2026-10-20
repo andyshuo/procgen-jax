@@ -1,0 +1,31 @@
+[workspace]
+name = "procgen-jax"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+pytest = "*"
+ruff = "==0.17.1"
+
+[pypi-dependencies]
+jax = ">=0.12"
+numpy = ">=2"
+
+[feature.gpu.pypi-dependencies]
+jax = { version = ">=0.12", extras = ["cuda12"] }
+
+[environments]
+default = { features = [], solve-group = "default" }
+gpu = { features = ["gpu"], solve-group = "gpu" }
+
+[tasks]
+test = { cmd = "python -m pytest -q", description = "Run the test suite" }
+lint = { cmd = "ruff check . && ruff format --check .", description = "Lint and formatting check" }
+fmt = { cmd = "ruff format .", description = "Format the code" }
+[tasks.demo]
+cmd = "python examples/random_rollout.py"
+description = "Run a random rollout"
+
+[tasks.demo.env]
+PYTHONPATH = "."
