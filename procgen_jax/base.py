@@ -12,7 +12,7 @@ instead of ``flax.struct.dataclass`` so the package only depends on JAX/NumPy.
 """
 
 import abc
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, NamedTuple
 
 import jax
@@ -45,6 +45,17 @@ class State(NamedTuple):
     reward: jax.Array
     done: jax.Array
     info: dict
+
+
+def auto_reset(env_state: Any, done: jax.Array, reset_fn: Callable[[Any], Any]) -> Any:
+    """Reset ``env_state`` when ``done``, and skip the reset when it is not.
+
+    ``jax.lax.cond`` keeps the reset off the hot path: generating a level costs
+    far more than a step, and episodes end rarely. Under ``jax.vmap`` the two
+    branches are evaluated as a ``select`` instead, so the saving does not
+    vectorise; correctness is the same either way.
+    """
+    return jax.lax.cond(done, reset_fn, lambda state: state, env_state)
 
 
 class Env(abc.ABC):

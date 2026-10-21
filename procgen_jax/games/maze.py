@@ -20,7 +20,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-from procgen_jax.base import Env, State
+from procgen_jax.base import Env, State, auto_reset
 from procgen_jax.objects import GOAL, SPACE, WALL
 from procgen_jax.render import render_observation
 
@@ -147,29 +147,30 @@ class MazeEnv(Env):
         return NUM_ACTIONS
 
     @property
-    def observation_shape(self):
+    def observation_shape(self) -> tuple[int, int, int]:
         return (64, 64, 3)
 
     def reset(self, key: jax.Array) -> State:
         return self.state_from(self.reset_env_state(key))
 
     def step(self, state: State, action: jax.Array) -> State:
-        env_state, reward = self.step_env_state(state.env_state, action)
+        env_state, reward, terminated = self.step_env_state(state.env_state, action)
 
-        terminated = reward > 0
-        truncated = env_state.steps >= self.timeout
+        # Brax keeps the two exclusive: a step that terminates is not also
+        # truncated, so ``truncated`` unambiguously means "time ran out".
+        truncated = jnp.logical_and(env_state.steps >= self.timeout, jnp.logical_not(terminated))
         done = jnp.logical_or(terminated, truncated)
 
-        reset_key, _ = jax.random.split(state.env_state.key)
-        fresh = self.reset_env_state(reset_key)
-        merged = jax.tree.map(lambda reset, stepped: jnp.where(done, reset, stepped), fresh, env_state)
+        def reset(env_state: MazeState) -> MazeState:
+            reset_key, _ = jax.random.split(env_state.key)
+            return self.reset_env_state(reset_key)
 
         # The terminal frame of the episode is the one the agent acted on. It is
         # free to keep (``state.obs``) and, unlike a post-move render, it still
         # shows the goal tile the agent just stepped onto -- the agent sprite
         # covers the goal once they share a tile.
         return self.state_from(
-            merged,
+            auto_reset(env_state, done, reset),
             reward=reward,
             done=done,
             terminated=terminated,
@@ -195,9 +196,14 @@ class MazeEnv(Env):
         )
 
     def step_env_state(self, env_state: MazeState, action: jax.Array):
+        """Advance the game state. Returns ``(state, reward, reached_goal)``."""
         action = jnp.asarray(action, dtype=jnp.int32)
-        vx = action // 3 - 1
-        vy = action % 3 - 1
+        # Slots 9-14 exist only for ProcGen's shared 15-action space. Decoding
+        # them through the same 3x3 arithmetic would yield |v| up to 4, i.e. a
+        # multi-tile jump straight through walls, so they are no-ops here.
+        valid = (action >= 0) & (action < 9)
+        vx = jnp.where(valid, action // 3 - 1, 0)
+        vy = jnp.where(valid, action % 3 - 1, 0)
         vy = jnp.where(vx != 0, 0, vy)  # maze: horizontal movement wins
 
         x, y = env_state.agent[0], env_state.agent[1]
@@ -217,7 +223,7 @@ class MazeEnv(Env):
             steps=env_state.steps + 1,
             key=env_state.key,
         )
-        return stepped, reward
+        return stepped, reward, reached
 
     # -- State construction ------------------------------------------------ #
     def state_from(

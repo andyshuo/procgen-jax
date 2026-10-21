@@ -89,7 +89,8 @@ Auto-reset is built in: on the step where an episode ends, `env_state` and `obs`
 are the *fresh episode*, while `done` (and `info['terminated']` /
 `info['truncated']`) still describe the transition that just finished. That is
 gymnax's semantics, and it keeps `scan` shapes static. `info['final_obs']` keeps
-the last frame of the finished episode.
+the last frame the env emitted for that episode — the one the agent acted on, so a
+terminal event stays visible — which auto-reset would otherwise overwrite.
 
 `MazeState` holds `grid` (the tile map), `agent` (x, y), `steps` and `key`, so an
 episode is a pure function of its starting key.
@@ -102,6 +103,9 @@ episode is a pure function of its starting key.
   differentiable-free but still jit-able.
 - **Actions.** ProcGen encodes the 3x3 movement grid as `vx = a // 3 - 1`,
   `vy = a % 3 - 1`; `maze` additionally zeroes `vy` whenever `vx != 0`.
+- **Auto-reset.** `step` resets through `procgen_jax.base.auto_reset`, a `lax.cond`
+  around the level generator, so a running episode never pays for regeneration.
+  `done` still describes the transition, gymnax-style.
 - **Rewards.** +10 for reaching the goal (ProcGen: `REWARD = 10.0`), timeout 500.
 - **Observations.** An agent-centred 8x8 tile window upscaled to 64x64 RGB, padded
   with walls outside the world.
@@ -109,8 +113,11 @@ episode is a pure function of its starting key.
 ### Performance
 
 `pixi run demo` drives a batch of 64 environments for 256 steps inside one compiled
-`lax.scan`. On a CPU-only machine this reaches ~44k environment steps/s; there is no
-per-step host synchronisation because the whole rollout is a single XLA program.
+`lax.scan`; on this CPU box that reaches ~20k environment steps/s. A single
+un-batched jitted `scan` runs at ~47k steps/s: `lax.cond` lets it skip the level
+generator while an episode is running, whereas `vmap` lowers the same call to a
+`select` and evaluates both branches. Nothing crosses to the host per step — the
+whole rollout is one XLA program.
 
 ## Known deviations from the original
 
@@ -120,8 +127,9 @@ These are deliberate first-milestone choices, not bugs:
    framing and dtype match, so downstream encoders are unaffected.
 2. **The maze always fills the world.** ProcGen randomises `maze_dim` per episode
    and centres it inside `world_dim`; here `maze_dim == world_dim`.
-3. **Actions 9-14 are unused.** ProcGen exposes 15 discrete actions but only 0-8 are
-   meaningful on the 3x3 grid.
+3. **Actions 9-14 are no-ops.** ProcGen exposes 15 discrete actions for every game
+   but `maze` only decodes a 3x3 grid, so the extra slots are inert here instead of
+   being snapped onto the nearest move.
 4. Levels are *not* bit-identical to the C++ implementation, because the RNG
    sequence differs. The generation algorithm is the same.
 

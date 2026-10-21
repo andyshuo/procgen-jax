@@ -114,6 +114,20 @@ def test_noop_keeps_the_agent_in_place(env):
     assert float(stepped.reward) == 0.0
 
 
+@pytest.mark.parametrize('action', [9, 10, 11, 12, 13, 14])
+def test_action_slots_past_the_grid_do_not_move(env, action):
+    """ProcGen's 15 action slots are shared across games; 9-14 must not teleport.
+
+    Decoding them through the same ``vx = a // 3 - 1`` arithmetic would yield
+    displacements up to 4 tiles, i.e. straight through walls.
+    """
+    stepped = env.step(make_state(env, CORRIDOR), jnp.asarray(action))
+
+    assert np.array_equal(np.asarray(stepped.env_state.agent), [0, 0])
+    assert float(stepped.reward) == 0.0
+    assert not bool(stepped.done)
+
+
 # --------------------------------------------------------------------------- #
 # termination
 # --------------------------------------------------------------------------- #
@@ -147,6 +161,20 @@ def test_terminal_observation_is_kept_in_info(env):
     assert final.shape == (OBS_SIZE, OBS_SIZE, 3)
     # The reward tile is visible to the right of the agent in the terminal frame.
     assert np.any((final == np.array([245, 205, 60])).all(axis=-1))
+    # ... and it survived the auto-reset, which ``obs`` did not.
+    assert not np.array_equal(np.asarray(stepped.obs), final)
+
+
+def test_goal_on_the_final_step_is_not_truncated():
+    """Brax suppresses truncation on a terminating step, so the two flags stay exclusive."""
+    env = MazeEnv(world_dim=3, timeout=5)
+    state = make_state(env, GOAL_RIGHT, steps=4)
+
+    stepped = env.step(state, jnp.asarray(RIGHT))
+
+    assert bool(stepped.done)
+    assert bool(stepped.info['terminated'])
+    assert not bool(stepped.info['truncated'])
 
 
 def test_timeout_truncates():
