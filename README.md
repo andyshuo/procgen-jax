@@ -10,13 +10,14 @@ synchronisation per step, and `jax.vmap` turnaround for free.
 
 ## Status
 
-| Game       | Rules ported | Notes                                    |
-| ---------- | ------------ | ---------------------------------------- |
-| `maze`     | ✅            | Kruskal mazes, grid movement, goal reward |
+| Game       | Rules ported | Notes                                                       |
+| ---------- | ------------ | ----------------------------------------------------------- |
+| `maze`     | ✅            | Kruskal mazes, grid movement, goal reward                    |
+| `coinrun`  | ✅            | platformer physics, lava/saw/enemy deaths, coin, crates      |
 
-The remaining 15 games are planned; see the roadmap below. Each game in the
+The remaining 14 games are planned; see the roadmap below. Each game in the
 original is only 121-523 lines of logic on top of a shared engine, so the
-incremental cost per game is small once the engine primitives settle.
+incremental cost per game is small now that `procgen_jax/engine.py` exists.
 
 ## Install
 
@@ -107,8 +108,30 @@ episode is a pure function of its starting key.
   around the level generator, so a running episode never pays for regeneration.
   `done` still describes the transition, gymnax-style.
 - **Rewards.** +10 for reaching the goal (ProcGen: `REWARD = 10.0`), timeout 500.
-- **Observations.** An agent-centred 8x8 tile window upscaled to 64x64 RGB, padded
-  with walls outside the world.
+- **Observations.** An agent-centred tile window upscaled to 64x64 RGB, padded with
+  walls outside the world. `maze` shows 8 tiles; `coinrun` shows the 13 tiles its
+  constructor sets via `visibility`.
+
+### Engine (`procgen_jax/engine.py`)
+
+Transcribed from `procgen/src/basic-abstract-game.cpp`, and shared by every game:
+
+- **Entities** are fixed-size pytrees with an `active` mask instead of a
+  `std::vector`, so a level with a variable number of enemies still has a static
+  shape.
+- **Sub-stepping.** `step_object` splits a displacement into `int(4 * |v|)`
+  pieces (floored at 4) so a fast body cannot tunnel through a tile. The C++ trip
+  count is data dependent, so the loop runs the maximum number of times and masks
+  the rest -- same arithmetic, static shape.
+- **Collision.** `sub_step` samples the four corners of the moved body against the
+  grid, then either reflects it (enemies bouncing off walls) or snaps it flush
+  against the tile it hit. Both are branch-free `where` expressions.
+- **Gravity is applied before movement**, and jumping is an impulse clamped to
+  `max_jump`. This is why the jump peak is the *discrete* sum
+  `1.5 + 1.3 + ... + 0.1 = 6.4` tiles rather than the continuous `v^2 / 2g = 5.6`.
+
+Not ported: entity pushing (the `push_obj` recursion, which only matters when
+movable bodies block each other) and trails.
 
 ### Performance
 
@@ -128,15 +151,19 @@ These are deliberate first-milestone choices, not bugs:
 2. **The maze always fills the world.** ProcGen randomises `maze_dim` per episode
    and centres it inside `world_dim`; here `maze_dim == world_dim`.
 3. **Actions 9-14 are no-ops.** ProcGen exposes 15 discrete actions for every game
-   but `maze` only decodes a 3x3 grid, so the extra slots are inert here instead of
-   being snapped onto the nearest move.
+   but the 3x3 grid games only decode 0-8, so the extra slots are inert here instead
+   of being snapped onto the nearest move.
 4. Levels are *not* bit-identical to the C++ implementation, because the RNG
    sequence differs. The generation algorithm is the same.
+5. **`coinrun` observations are always agent-centred**, whereas ProcGen makes it an
+   option; entity pushing is not ported, and `EasyMode` (`distribution_mode`) is not
+   implemented, so every level uses the harder distribution.
 
 ## Roadmap
 
-- [ ] Port the remaining 15 games, starting with `coinrun` (platformer physics).
-- [ ] Shared engine primitives (`Entity`, `is_blocked`, grid/entity collisions).
+- [x] `coinrun` -- platformer physics, so the engine has a second consumer.
+- [x] Shared engine primitives (`Entity`, `is_blocked`, sub-stepped collisions).
+- [ ] Port the remaining 14 games (next: `jumper`/`climber`, same physics family).
 - [ ] Sprite-based rendering close to the original.
 - [ ] Level-parity harness against the C++ implementation.
 - [ ] PPO baseline + throughput comparison against the original.
