@@ -14,6 +14,7 @@ synchronisation per step, and `jax.vmap` turnaround for free.
 | ---------- | ------------ | ----------------------------------------------------------- |
 | `maze`     | ✅            | Kruskal mazes, grid movement, goal reward                    |
 | `coinrun`  | ✅            | platformer physics, lava/saw/enemy deaths, coin, crates      |
+|            |              | levels are verified completable by a greedy policy           |
 
 The remaining 14 games are planned; see the roadmap below. Each game in the
 original is only 121-523 lines of logic on top of a shared engine, so the
@@ -71,6 +72,19 @@ Run the bundled demo (random policy, prints throughput):
 ```bash
 pixi run demo
 ```
+
+Record a video:
+
+```bash
+pixi run video        # writes runs/maze.gif and runs/coinrun.gif
+```
+
+`procgen_jax/recording.py` collects the frames with one `lax.scan` (the observation
+lives in the state, so an episode is a `(T, 64, 64, 3)` array with no per-step host
+round-trip) and pipes them to `ffmpeg` as raw RGB -- no Python imaging dependency.
+Recording is deliberately *not* a `Wrapper`: a wrapper that accumulated frames would
+either grow a pytree leaf every step, which breaks `scan`'s static carry, or call
+back into the host, which breaks `jit`.
 
 ## Environment API
 
@@ -132,6 +146,13 @@ Transcribed from `procgen/src/basic-abstract-game.cpp`, and shared by every game
 
 Not ported: entity pushing (the `push_obj` recursion, which only matters when
 movable bodies block each other) and trails.
+
+### Recording
+
+`procgen_jax/recording.py` has `rollout(env, state, actions)`, which returns
+`(frames, rewards, dones)` from a single `lax.scan`, and `encode_video(path, frames)`,
+which pipes `uint8` frames to `ffmpeg` as raw RGB. `pixi run video` writes
+`runs/maze.gif` and `runs/coinrun.gif`.
 
 ### Performance
 

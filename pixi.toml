@@ -29,3 +29,10 @@ description = "Run a random rollout"
 
 [tasks.demo.env]
 PYTHONPATH = "."
+
+[tasks.video]
+cmd = "python examples/record_video.py"
+description = "Record one episode of each game to runs/*.gif"
+
+[tasks.video.env]
+PYTHONPATH = "."

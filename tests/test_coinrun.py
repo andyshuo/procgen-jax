@@ -156,6 +156,30 @@ def test_generated_entities_sit_inside_the_world():
             assert np.all((ys > 0) & (ys < WORLD_DIM))
 
 
+def test_a_greedy_policy_can_reach_the_coin(env):
+    """The structural tests cannot show that a level can be finished at all.
+
+    Pressing right and jumping every fifth step is enough on every seed tried;
+    this pins that down so a generator change that walls the coin off fails here.
+    """
+    seeds, steps = 3, 260
+    actions = jnp.full((steps,), RIGHT, jnp.int32).at[::5].set(JUMP)
+
+    def run(keys):
+        states = jax.vmap(env.reset)(keys)
+
+        def body(carry, action):
+            carry = jax.vmap(env.step)(carry, jnp.broadcast_to(action, (seeds,)))
+            return carry, carry.reward
+
+        return jax.lax.scan(body, states, actions)[1]
+
+    rewards = jax.jit(run)(jax.random.split(jax.random.PRNGKey(0), seeds))
+    reached = int((rewards.sum(axis=0) >= GOAL_REWARD).sum())
+
+    assert reached == seeds
+
+
 # --------------------------------------------------------------------------- #
 # interface
 # --------------------------------------------------------------------------- #
