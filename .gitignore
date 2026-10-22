@@ -11,6 +11,11 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
+# Downloaded reference material / build caches
+.atlas_cache/
+.reference_cache/
+.randgen_ref/
+
 # Outputs
 runs/
 logs/
@@ -18,5 +23,8 @@ logs/
 *.mp4
 *.npz
 
-# ...except the demo recordings embedded in the README
+# ...except the demo recordings embedded in the README, the sprite atlas and the
+# C++ level-reference fixture, which are all small and regenerable
 !docs/*.gif
+!procgen_jax/data/*.npz
+!tests/data/*.npz

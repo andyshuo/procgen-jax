@@ -36,3 +36,14 @@ description = "Record one episode of each game (default runs/, or pass a directo
 
 [tasks.video.env]
 PYTHONPATH = "."
+
+[tasks.atlas]
+cmd = "python tools/build_atlas.py"
+description = "Download the Kenney sprites and build procgen_jax/data/sprites.npz"
+
+[tasks.reference]
+cmd = "python tools/build_reference.py"
+description = "Build the C++ level fixture in tests/data (needs the ProcGen sources)"
+
+[tasks.reference.env]
+PYTHONPATH = "."

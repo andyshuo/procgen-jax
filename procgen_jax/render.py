@@ -141,3 +141,85 @@ def _tile_lookup(grid: jax.Array, world_x: jax.Array, world_y: jax.Array, out_of
     inside = (world_x >= 0) & (world_y >= 0) & (xi < width) & (yi < height)
     flat = grid.reshape(-1)[jnp.clip(yi, 0, height - 1) * width + jnp.clip(xi, 0, width - 1)]
     return jnp.where(inside, flat, out_of_bounds)
+
+
+#: Sky behind everything; ProcGen draws a Kenney background image instead.
+SKY_COLOUR = (110, 145, 255)
+#: ``get_adjusted_image_rect`` draws the player 1.7415 tiles tall.
+PLAYER_SPRITE_HEIGHT = 1.7415
+
+
+def render_textured(
+    grid: jax.Array,
+    center: jax.Array,
+    entities,
+    tile_rows: jax.Array,
+    entity_rows: jax.Array,
+    height_scale: jax.Array,
+    atlas: jax.Array,
+    view_tiles: int,
+    out_of_bounds,
+    obs_size: int = OBS_SIZE,
+):
+    """Same camera as :func:`render_scene`, but sampling the sprite atlas.
+
+    ``tile_rows`` maps a tile id to an atlas row for the level's ground theme and
+    ``entity_rows`` does the same per entity; both are precomputed tables so the
+    jitted program only gathers.
+    """
+    sprite = atlas.shape[1]
+    unit = obs_size / view_tiles
+    cols = jnp.arange(obs_size)[None, :]
+    rows = jnp.arange(obs_size)[:, None]
+
+    world_x = center[0] - view_tiles / 2 + (cols + 0.5) / unit
+    world_y = center[1] + view_tiles / 2 - (rows + 0.5) / unit
+
+    tiles = _tile_lookup(grid, world_x, world_y, out_of_bounds)
+    # Tile sprites are per-tile textures: sample by the fractional coordinate.
+    tex_x = jnp.clip((world_x % 1.0) * sprite, 0, sprite - 1).astype(jnp.int32)
+    tex_y = jnp.clip((1.0 - world_y % 1.0) * sprite, 0, sprite - 1).astype(jnp.int32)
+    image = _blend(
+        jnp.broadcast_to(jnp.asarray(SKY_COLOUR, jnp.float32), (*tiles.shape, 3)), atlas[tile_rows[tiles], tex_y, tex_x]
+    )
+
+    # Entities are bodies of size (2*rx, 2*ry*height_scale) in world units.
+    half_x = entities.rx[:, None, None]
+    half_y = entities.ry[:, None, None] * height_scale[:, None, None]
+    left = entities.x[:, None, None] - half_x
+    top = entities.y[:, None, None] + half_y
+    u = (world_x[None] - left) / (2 * half_x)
+    v = (top - world_y[None]) / (2 * half_y)
+    u = jnp.where(entities.is_reflected[:, None, None], 1.0 - u, u)
+    inside = (
+        (u >= 0.0)
+        & (u < 1.0)
+        & (v >= 0.0)
+        & (v < 1.0)
+        & entities.active[:, None, None]
+        & (entity_rows >= 0)[:, None, None]
+    )
+    tex_u = jnp.clip(u * sprite, 0, sprite - 1).astype(jnp.int32)
+    tex_v = jnp.clip(v * sprite, 0, sprite - 1).astype(jnp.int32)
+
+    for layer in (0, 1):
+        painted = inside & (entities.render_z[:, None, None] == layer)
+        hit = painted.any(axis=0)
+        # ``argmax`` picks the first covering body, so lower indices paint on top
+        # within a layer -- the same order ``draw_entities`` walks the vector.
+        chosen = jnp.argmax(painted, axis=0)[None]
+        row_sel = jnp.take_along_axis(entity_rows[:, None, None], chosen, axis=0)[0]
+        texel = atlas[
+            row_sel,
+            jnp.take_along_axis(tex_v, chosen, axis=0)[0],
+            jnp.take_along_axis(tex_u, chosen, axis=0)[0],
+        ]
+        image = jnp.where(hit[..., None], _blend(image, texel), image)
+
+    return jnp.clip(image, 0, 255).astype(jnp.uint8)
+
+
+def _blend(bottom: jax.Array, texel: jax.Array) -> jax.Array:
+    """Alpha-composite an RGBA texel over a float RGB image."""
+    alpha = texel[..., 3:4].astype(jnp.float32) / 255.0
+    return bottom * (1.0 - alpha) + texel[..., :3].astype(jnp.float32) * alpha

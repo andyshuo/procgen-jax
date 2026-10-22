@@ -10,15 +10,23 @@ from procgen_jax.games.coinrun import (
     AGENT_RX,
     AGENT_RY,
     CRATE,
+    ENEMY1,
+    ENEMY2,
+    ENTITY_SPRITES,
     GOAL,
     GOAL_REWARD,
     LAVA_MID,
     LAVA_TOP,
     MAX_ENTITIES,
     MAX_JUMP,
+    PLAYER_JUMP,
+    PLAYER_RIGHT1,
+    PLAYER_RIGHT2,
     SAW,
+    SAW2,
     START_X,
     START_Y,
+    TILE_SPRITES,
     WALL_MID,
     WALL_TOP,
     WORLD_DIM,
@@ -27,7 +35,7 @@ from procgen_jax.games.coinrun import (
     empty_entity_pool,
     generate_level,
 )
-from procgen_jax.render import COINRUN_ENTITY_COLORS, COINRUN_TILE_COLORS
+from procgen_jax.render import SKY_COLOUR
 
 # Actions: vx = a // 3 - 1, vy = a % 3 - 1.
 UP, LEFT, DOWN, NOOP, RIGHT = 3, 1, 5, 4, 7
@@ -62,6 +70,7 @@ def state_with(env, grid, agent=None, enemies=(), statics=(), steps=0, last_agen
             has_support=jnp.asarray(True),
             is_on_crate=jnp.asarray(is_on_crate),
             facing_right=jnp.asarray(True),
+            wall_theme=jnp.asarray(0),
         )
     )
 
@@ -89,7 +98,7 @@ jit_step = jax.jit(JIT_ENV.step)
 # level generation
 # --------------------------------------------------------------------------- #
 def test_generate_level_shapes():
-    grid, enemies, statics, num_enemies, num_statics = level(jax.random.PRNGKey(0))
+    grid, enemies, statics, num_enemies, num_statics, _, _ = level(0)
 
     assert grid.shape == (WORLD_DIM, WORLD_DIM)
     assert grid.dtype == jnp.int32
@@ -100,14 +109,14 @@ def test_generate_level_shapes():
 
 
 def test_level_has_a_floor_and_exactly_one_coin():
-    grid = np.asarray(level(jax.random.PRNGKey(0))[0])
+    grid = np.asarray(level(0)[0])
 
     assert np.all(grid[0] != 0), 'the bottom row must be solid floor'
     assert int((grid == GOAL).sum()) == 1
 
 
 def test_coin_sits_on_a_plinth():
-    grid = np.asarray(level(jax.random.PRNGKey(3))[0])
+    grid = np.asarray(level(3)[0])
     coin_y, coin_x = np.argwhere(grid == GOAL)[0]
 
     assert grid[coin_y - 1, coin_x] in (WALL_MID, WALL_TOP)
@@ -116,22 +125,22 @@ def test_coin_sits_on_a_plinth():
 @pytest.mark.parametrize('seed', range(12))
 def test_every_level_keeps_the_agent_start_clear(seed):
     """The agent starts standing on the floor, not inside geometry."""
-    grid = np.asarray(level(jax.random.PRNGKey(seed))[0])
+    grid = np.asarray(level(seed)[0])
 
     assert grid[0, 1] == WALL_TOP
     assert grid[1, 1] == 0
 
 
 def test_generation_is_deterministic():
-    first = np.asarray(level(jax.random.PRNGKey(42))[0])
-    second = np.asarray(level(jax.random.PRNGKey(42))[0])
+    first = np.asarray(level(42)[0])
+    second = np.asarray(level(42)[0])
 
     assert np.array_equal(first, second)
 
 
 def test_generation_differs_across_keys():
-    first = np.asarray(level(jax.random.PRNGKey(1))[0])
-    second = np.asarray(level(jax.random.PRNGKey(2))[0])
+    first = np.asarray(level(1)[0])
+    second = np.asarray(level(2)[0])
 
     assert not np.array_equal(first, second)
 
@@ -139,14 +148,14 @@ def test_generation_differs_across_keys():
 def test_entity_pools_never_overflow():
     """The original appends to a vector; here the pools are fixed size."""
     for seed in range(32):
-        _, _, _, num_enemies, num_statics = level(jax.random.PRNGKey(seed))
+        _, _, _, num_enemies, num_statics, _, _ = level(seed)
         assert int(num_enemies) < MAX_ENTITIES
         assert int(num_statics) < MAX_ENTITIES
 
 
 def test_generated_entities_sit_inside_the_world():
     for seed in range(8):
-        _, enemies, statics, num_enemies, num_statics = level(jax.random.PRNGKey(seed))
+        _, enemies, statics, num_enemies, num_statics, _, _ = level(seed)
         for pool, count in ((enemies, num_enemies), (statics, num_statics)):
             active = np.asarray(pool.active[:count])
             xs = np.asarray(pool.x[:count])
@@ -366,11 +375,12 @@ def test_action_slots_past_the_grid_do_not_move(env, action):
 # --------------------------------------------------------------------------- #
 # observations
 # --------------------------------------------------------------------------- #
-def test_observation_centres_the_player(env):
+def test_observation_draws_the_player_at_the_centre(env):
     state = env.reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
-    assert np.array_equal(obs[32, 32], COINRUN_ENTITY_COLORS[engine.PLAYER])
+    # The player sprite is centred in its own window, so nothing else can be there.
+    assert not np.array_equal(obs[32, 32], np.asarray(SKY_COLOUR, np.uint8))
 
 
 def test_observation_pads_outside_the_world_with_walls(env):
@@ -378,14 +388,36 @@ def test_observation_pads_outside_the_world_with_walls(env):
     state = env.reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
-    assert np.array_equal(obs[32, 0], COINRUN_TILE_COLORS[WALL_MID])
+    assert not np.array_equal(obs[32, 0], np.asarray(SKY_COLOUR, np.uint8))
 
 
 def test_observation_shows_the_floor_below_the_agent(env):
     state = env.reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
-    assert np.array_equal(obs[37, 32], COINRUN_TILE_COLORS[WALL_TOP])
+    assert not np.array_equal(obs[37, 32], np.asarray(SKY_COLOUR, np.uint8))
+
+
+def test_sprite_tables_cover_every_object_the_game_draws():
+    """A missing atlas entry would silently render as nothing."""
+    transparent = 0
+    for tile in (GOAL, WALL_MID, WALL_TOP, LAVA_MID, LAVA_TOP):
+        assert all(int(TILE_SPRITES[theme, tile]) != transparent for theme in range(TILE_SPRITES.shape[0]))
+    assert int(TILE_SPRITES[0, 19]) == transparent  # ENEMY_BARRIER is invisible
+
+    for image_type, themes in (
+        (engine.PLAYER, 5),
+        (PLAYER_JUMP, 5),
+        (PLAYER_RIGHT1, 5),
+        (PLAYER_RIGHT2, 5),
+        (ENEMY1, 9),
+        (ENEMY2, 9),
+        (SAW, 1),
+        (SAW2, 1),
+        (CRATE, 4),
+    ):
+        for theme in range(themes):
+            assert int(ENTITY_SPRITES[image_type, theme]) != transparent, (image_type, theme)
 
 
 # --------------------------------------------------------------------------- #

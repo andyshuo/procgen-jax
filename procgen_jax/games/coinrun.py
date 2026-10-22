@@ -28,10 +28,10 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-from procgen_jax import engine
+from procgen_jax import engine, rng, sprites
 from procgen_jax.base import Env, State, auto_reset
 from procgen_jax.objects import SPACE
-from procgen_jax.render import render_scene
+from procgen_jax.render import render_textured
 
 # --------------------------------------------------------------------------- #
 # object ids, copied from ``coinrun.cpp`` / ``object-ids.h``
@@ -77,6 +77,24 @@ AGENT_RY = 0.5787
 START_X = 1.5
 START_Y = 1.5787
 
+#: ``coinrun.cpp``: the sprite sets chosen from per level / per entity.
+GROUND_THEMES = ['Dirt', 'Grass', 'Planet', 'Sand', 'Snow', 'Stone']
+PLAYER_THEME_COLORS = ['Beige', 'Blue', 'Green', 'Pink', 'Yellow']
+WALKING_ENEMIES = [
+    'slimeBlock',
+    'slimePurple',
+    'slimeBlue',
+    'slimeGreen',
+    'mouse',
+    'snail',
+    'ladybug',
+    'wormGreen',
+    'wormPink',
+]
+CRATE_SPRITES = ['boxCrate', 'boxCrate_double', 'boxCrate_single', 'boxCrate_warning']
+#: ``get_adjusted_image_rect`` draws the player taller than its body.
+PLAYER_SPRITE_HEIGHT = 1.7415
+
 # Bounds that turn the original's data-dependent loops into static ones.
 MAX_SECTIONS = 5  # num_sections = randn(dif) + dif, dif <= 3
 MAX_DX = 9  # dx = randn(2*dif) + 3 + dif//3
@@ -85,6 +103,44 @@ MAX_ENTITIES = 36  # worst case: every section a pit full of enemies
 MAX_CRATE_PILE = 3
 #: ``int(4*|v|)`` is at most 6 because ``|vx| <= maxspeed`` and ``|vy| <= max_jump``.
 MAX_SUB_STEPS = 6
+
+
+def _tile_sprite_table() -> jax.Array:
+    """``(theme, tile id) -> atlas row``, following ``theme_for_grid_obj``."""
+    table = jnp.full((len(GROUND_THEMES), 64), sprites.row('_transparent'), jnp.int32)
+    for theme, ground in enumerate(GROUND_THEMES):
+        table = table.at[theme, WALL_TOP].set(sprites.row(f'Ground/{ground}/mid'))
+        table = table.at[theme, WALL_MID].set(sprites.row(f'Ground/{ground}/center'))
+    table = table.at[:, GOAL].set(sprites.row('Items/coin'))
+    table = table.at[:, LAVA_MID].set(sprites.row('Tiles/lava'))
+    table = table.at[:, LAVA_TOP].set(sprites.row('Tiles/lava_top'))
+    # ENEMY_BARRIER is invisible, as in the original (``image_for_type`` returns -1).
+    return table
+
+
+def _entity_sprite_table() -> jax.Array:
+    """``(image_type, image_theme) -> atlas row``, following ``asset_for_type``."""
+    table = jnp.full((32, 10), sprites.row('_transparent'), jnp.int32)
+    for image_type, pose in (
+        (engine.PLAYER, 'stand'),
+        (PLAYER_JUMP, 'jump'),
+        (PLAYER_RIGHT1, 'walk1'),
+        (PLAYER_RIGHT2, 'walk2'),
+    ):
+        for theme, colour in enumerate(PLAYER_THEME_COLORS):
+            table = table.at[image_type, theme].set(sprites.row(f'Players/{colour}/{pose}'))
+    for theme, enemy in enumerate(WALKING_ENEMIES):
+        table = table.at[ENEMY1, theme].set(sprites.row(f'Enemies/{enemy}/idle'))
+        table = table.at[ENEMY2, theme].set(sprites.row(f'Enemies/{enemy}/move'))
+    table = table.at[SAW, 0].set(sprites.row('Tiles/saw/idle'))
+    table = table.at[SAW2, 0].set(sprites.row('Tiles/saw/move'))
+    for theme, crate in enumerate(CRATE_SPRITES):
+        table = table.at[CRATE, theme].set(sprites.row(f'Tiles/{crate}'))
+    return table
+
+
+TILE_SPRITES = _tile_sprite_table()
+ENTITY_SPRITES = _entity_sprite_table()
 
 
 class CoinRunState(NamedTuple):
@@ -102,6 +158,7 @@ class CoinRunState(NamedTuple):
     has_support: jax.Array
     is_on_crate: jax.Array
     facing_right: jax.Array
+    wall_theme: jax.Array
 
 
 # --------------------------------------------------------------------------- #
@@ -158,34 +215,60 @@ def _push_saw(pool, count, x, y, active):
     return _append(pool, count, engine.entity(x + 0.5, y + 0.5, type=SAW), active)
 
 
-def _push_enemy(pool, count, x, y, vx, active):
-    ent = engine.entity(x + 0.5, y + 0.5, vx, 0.0, type=ENEMY, render_z=1, smart_step=True)
+def _push_enemy(pool, count, x, y, vx, theme, active):
+    ent = engine.entity(
+        x + 0.5,
+        y + 0.5,
+        vx,
+        0.0,
+        type=ENEMY,
+        image_type=ENEMY1,
+        image_theme=theme,
+        render_z=1,
+        smart_step=True,
+    )
     return _append(pool, count, ent, active)
 
 
-def _push_crate(pool, count, x, y, active):
-    return _append(pool, count, engine.entity(x + 0.5, y + 0.5, type=CRATE), active)
+def _push_crate(pool, count, x, y, theme, active):
+    ent = engine.entity(x + 0.5, y + 0.5, type=CRATE, image_theme=theme)
+    return _append(pool, count, ent, active)
 
 
-def generate_level(key: jax.Array):
-    """``generate_coin_to_the_right``.
+def generate_level(level_seed: jax.Array):
+    """``CoinRun::game_reset`` + ``generate_coin_to_the_right``, bit for bit.
 
-    Returns ``(grid, enemies, statics, num_enemies, num_statics)``.
+    Every random draw happens in the same order as the C++, including the draws
+    that the original's short-circuits skip: those are gated with ``lax.cond`` so a
+    skipped draw does not advance the generator. That is what makes a level seed
+    mean the same level as the reference implementation (see
+    ``tools/coinrun_reference/coinrun_level.cpp``).
+
+    Returns ``(grid, enemies, statics, num_enemies, num_statics, wall_theme,
+    player_colour)``.
     """
-    head_key, section_key = jax.random.split(key)
-    head = jax.random.uniform(head_key, (4,), dtype=jnp.float32)
-    section_u = jax.random.uniform(section_key, (MAX_SECTIONS, 20), dtype=jnp.float32)
+    state = rng.seed(level_seed.astype(jnp.uint32))
 
-    difficulty = _draw(head, 0, 3) + 1
-    num_sections = _draw(head, 1, difficulty) + difficulty
-    danger_type = _draw(head, 2, 3)
+    # ---- BasicAbstractGame::game_reset and CoinRun::game_reset ----------------- #
+    state, _ = rng.rand01(state)  # bg_pct_x
+    state, _ = rng.randn(state, 8)  # background_index (platform_backgrounds.size())
+    state, _ = rng.rand01(state)  # random agent start, x
+    state, _ = rng.rand01(state)  # random agent start, y
+    state, player_colour = rng.randn(state, len(PLAYER_THEME_COLORS))
+    state, wall_theme = rng.randn(state, len(GROUND_THEMES))
 
-    # ``_max_dy``/``_max_dx`` come from the jump arc, as in the original.
+    # ---- generate_coin_to_the_right ------------------------------------------- #
+    state, dif_draw = rng.randn(state, 3)
+    difficulty = dif_draw + 1
+    state, section_draw = rng.randn(state, difficulty)
+    num_sections = section_draw + difficulty
+    state, danger_type = rng.randn(state, 3)
+
     max_dy = jnp.asarray(int(MAX_JUMP * MAX_JUMP / (2 * GRAVITY) - 0.5), jnp.int32)
     max_dx = jnp.asarray(int(MAX_SPEED * 2 * MAX_JUMP / GRAVITY - 0.5), jnp.int32)
+    int_dif = difficulty // 3
 
     grid = jnp.full((WORLD_DIM, WORLD_DIM), SPACE, jnp.int32)
-    # ``init_floor_and_walls`` runs before the level is carved.
     grid = fill(grid, 0, 0, WORLD_DIM, 1, WALL_TOP)
     grid = fill(grid, 0, 0, 1, WORLD_DIM, WALL_MID)
     grid = fill(grid, WORLD_DIM - 1, 0, 1, WORLD_DIM, WALL_MID)
@@ -194,109 +277,132 @@ def generate_level(key: jax.Array):
     enemies = empty_entity_pool(MAX_ENTITIES)
     statics = empty_entity_pool(MAX_ENTITIES)
 
+    def draw(state, active, fn):
+        """Consume a draw only when ``active`` -- the original's short-circuits."""
+        return jax.lax.cond(active, lambda s: fn(s), lambda s: (s, jnp.zeros((), jnp.int32)), state)
+
     def body(carry, section):
-        grid, cx, cy, enemies, n_enemies, statics, n_statics = carry
-        u = section_u[section]
-        int_dif = difficulty // 3
-        alive = (section < num_sections) & (cx + 15 < WORLD_DIM)
+        grid, cx, cy, enemies, n_enemies, statics, n_statics, state = carry
+        active = (section < num_sections) & (cx + 15 < WORLD_DIM)
 
-        # ---- where this section goes -------------------------------------- #
-        dy = _draw(u, 0, 4) + 1 + int_dif
+        # ---- where this section goes ------------------------------------------ #
+        state, dy_draw = draw(state, active, lambda s: rng.randn(s, 4))
+        dy = dy_draw + 1 + int_dif
         dy = jnp.minimum(dy, max_dy)
-        flip_high = cy >= 20  # too high: always go down
-        flip_chance = (cy >= 5) & (_draw(u, 1, 2) == 1)
-        dy = jnp.where(flip_high | flip_chance, -dy, dy)
-        dx = _draw(u, 2, 2 * difficulty) + 3 + int_dif
+        high = cy >= 20
+        state, flip_draw = draw(state, active & (cy >= 5) & ~high, lambda s: rng.randn(s, 2))
+        dy = jnp.where(high | ((cy >= 5) & (flip_draw == 1)), -dy, dy)
+        state, dx_draw = draw(state, active, lambda s: rng.randn(s, 2 * difficulty))
+        dx = dx_draw + 3 + int_dif
+        cy = jnp.where(active, jnp.maximum(cy + dy, 1), cy)
 
-        cy = jnp.where(alive, jnp.maximum(cy + dy, 1), cy)
-        use_pit = alive & (dx > 7) & (cy > 3) & (_draw(u, 3, 20) >= difficulty)
+        pit_gate = active & (dx > 7) & (cy > 3)
+        state, pit_draw = draw(state, pit_gate, lambda s: rng.randn(s, 20))
+        use_pit = pit_gate & (pit_draw >= difficulty)
 
-        # ---- flat run: ground, a saw, an enemy and crate piles ------------ #
-        flat = _fill_ground(grid, cx, 0, dx, cy)
-        saw_x = cx + _draw(u, 10, dx - 2) + 1
-        saw_on = (_draw(u, 11, 10) < 2 * difficulty) & (dx > 3)
-        enemy_x = cx + _draw(u, 12, dx - 2) + 1
-        enemy_on = (_draw(u, 13, 10) < difficulty) & (dx > 3) & (max_dx >= 4)
-
-        # ---- pit: lava, or a row of hazards, sometimes bridged ------------- #
-        x1 = _draw(u, 4, 3) + 1
-        x2 = _draw(u, 5, 3) + 1
+        # ---- pit branch -------------------------------------------------------- #
+        state, x1_draw = draw(state, use_pit, lambda s: rng.randn(s, 3))
+        state, x2_draw = draw(state, use_pit, lambda s: rng.randn(s, 3))
+        x1 = x1_draw + 1
+        x2 = x2_draw + 1
         too_wide = (dx - x1 - x2) > max_dx
         pit_width = jnp.where(too_wide, max_dx, dx - x1 - x2)
         x2 = jnp.where(too_wide, dx - x1 - pit_width, x2)
 
         pit = _fill_ground(grid, cx, 0, x1, cy)
         pit = _fill_ground(pit, cx + dx - x2, 0, x2, cy)
-        lava_height = _draw(u, 6, cy - 3) + 1
+        state, lava_draw = draw(state, use_pit, lambda s: rng.randn(s, cy - 3))
+        lava_height = lava_draw + 1
         pit = jnp.where(
             use_pit & (danger_type == 0),
             _fill_lava(pit, cx + x1, 1, pit_width, lava_height),
             pit,
         )
 
-        # Bridge geometry: narrow pits place a 1-2 tile shelf, wide ones a span.
-        x3 = _draw(u, 7, 2) + jnp.where(pit_width == 5, 1, 2)
-        x4 = _draw(u, 9, 2) + 2
-        w1_narrow = _draw(u, 8, 2) + 1
-        # Pits of 5 or 6 tiles use the narrow shelf; 7+ spans the pit with x3/x4.
-        w1 = jnp.where(pit_width <= 6, w1_narrow, pit_width - x3 - x4)
-        pit = jnp.where(
-            use_pit & (pit_width > 4),
-            _fill_ground(pit, cx + x1 + x3, cy - 1, w1, 1),
-            pit,
-        )
-
-        grid = jnp.where(alive, jnp.where(use_pit, pit, flat), grid)
-
-        # ---- entities ----------------------------------------------------- #
-        enemy_vx = 0.15 * (2 * _draw(u, 14, 2) - 1)
+        # Hazards along the pit floor: saws cost no draw, enemies cost two each.
         for step_index in range(MAX_PIT):
             in_pit = use_pit & (step_index < pit_width)
-            statics, n_statics = _push_saw(
-                statics,
-                n_statics,
-                cx + x1 + step_index,
-                1,
-                alive & in_pit & (danger_type == 1),
-            )
+            statics, n_statics = _push_saw(statics, n_statics, cx + x1 + step_index, 1, in_pit & (danger_type == 1))
+            spawning = in_pit & (danger_type == 2)
+            state, vx_draw = draw(state, spawning, lambda s: rng.randn(s, 2))
+            state, theme = draw(state, spawning, lambda s: rng.randn(s, len(WALKING_ENEMIES)))
             enemies, n_enemies = _push_enemy(
                 enemies,
                 n_enemies,
                 cx + x1 + step_index,
                 1,
-                enemy_vx,
-                alive & in_pit & (danger_type == 2),
+                0.15 * (2 * vx_draw - 1),
+                theme,
+                spawning,
             )
 
-        on_flat = alive & ~use_pit
-        statics, n_statics = _push_saw(statics, n_statics, saw_x, cy, on_flat & saw_on)
-        enemies, n_enemies = _push_enemy(enemies, n_enemies, enemy_x, cy, enemy_vx, on_flat & enemy_on)
+        # A bridge over wide pits: 5 and 6 tile pits take a shelf, wider ones a span.
+        shallow = use_pit & (pit_width == 5)
+        middle = use_pit & (pit_width == 6)
+        deep = use_pit & (pit_width >= 7)
+        state, a = draw(state, shallow, lambda s: rng.randn(s, 2))
+        state, b = draw(state, shallow, lambda s: rng.randn(s, 2))
+        state, c = draw(state, middle, lambda s: rng.randn(s, 2))
+        state, d = draw(state, middle, lambda s: rng.randn(s, 2))
+        state, e = draw(state, deep, lambda s: rng.randn(s, 2))
+        state, f = draw(state, deep, lambda s: rng.randn(s, 2))
+        bridge_x = jnp.where(shallow, 1 + a, jnp.where(middle, 2 + c, 2 + e))
+        bridge_w = jnp.where(shallow, 1 + b, jnp.where(middle, 1 + d, pit_width - bridge_x - (2 + f)))
+        pit = jnp.where(
+            use_pit & (pit_width > 4),
+            _fill_ground(pit, cx + x1 + bridge_x, cy - 1, bridge_w, 1),
+            pit,
+        )
 
-        for pile_index in range(2):
-            crate_x = cx + _draw(u, 15 + 2 * pile_index, dx - 2) + 1
-            crate_on = on_flat & (_draw(u, 16 + 2 * pile_index, 2) == 1)
-            crate_on = crate_on & (crate_x != saw_x) & (crate_x != enemy_x)
-            pile_height = _draw(u, 17 + 2 * pile_index, MAX_CRATE_PILE) + 1
+        # ---- flat run ---------------------------------------------------------- #
+        flat = _fill_ground(grid, cx, 0, dx, cy)
+        on_flat = active & ~use_pit
+        state, saw_gate = draw(state, on_flat, lambda s: rng.randn(s, 10))
+        saw_on = (saw_gate < 2 * difficulty) & (dx > 3)
+        state, ob1_draw = draw(state, on_flat & saw_on, lambda s: rng.randn(s, dx - 2))
+        ob1_x = jnp.where(saw_on, cx + ob1_draw + 1, -1)
+        statics, n_statics = _push_saw(statics, n_statics, ob1_x, cy, on_flat & saw_on)
+
+        state, enemy_gate = draw(state, on_flat, lambda s: rng.randn(s, 10))
+        enemy_on = (enemy_gate < difficulty) & (dx > 3) & (max_dx >= 4)
+        state, ob2_draw = draw(state, on_flat & enemy_on, lambda s: rng.randn(s, dx - 2))
+        ob2_x = jnp.where(enemy_on, cx + ob2_draw + 1, -1)
+        state, enemy_vx_draw = draw(state, on_flat & enemy_on, lambda s: rng.randn(s, 2))
+        state, enemy_theme = draw(state, on_flat & enemy_on, lambda s: rng.randn(s, len(WALKING_ENEMIES)))
+        enemies, n_enemies = _push_enemy(
+            enemies,
+            n_enemies,
+            ob2_x,
+            cy,
+            0.15 * (2 * enemy_vx_draw - 1),
+            enemy_theme,
+            on_flat & enemy_on,
+        )
+
+        for _ in range(2):
+            state, crate_draw = draw(state, on_flat, lambda s: rng.randn(s, dx - 2))
+            crate_x = cx + crate_draw + 1
+            state, coin = draw(state, on_flat, lambda s: rng.randn(s, 2))
+            crate_on = on_flat & (coin == 1) & (crate_x != ob1_x) & (crate_x != ob2_x)
+            state, pile_draw = draw(state, crate_on, lambda s: rng.randn(s, 3))
+            pile_height = pile_draw + 1
             for level_index in range(MAX_CRATE_PILE):
-                statics, n_statics = _push_crate(
-                    statics,
-                    n_statics,
-                    crate_x,
-                    cy + level_index,
-                    crate_on & (level_index < pile_height),
-                )
+                stacking = crate_on & (level_index < pile_height)
+                state, crate_theme = draw(state, stacking, lambda s: rng.randn(s, len(CRATE_SPRITES)))
+                statics, n_statics = _push_crate(statics, n_statics, crate_x, cy + level_index, crate_theme, stacking)
 
-        # ---- fence the run so enemies stay in their section --------------- #
+        # ---- carve this section, then fence it -------------------------------- #
+        grid = jnp.where(active, jnp.where(use_pit, pit, flat), grid)
         previous = engine.tile_at(grid, cx - 1, cy, WALL_MID)
         grid = jnp.where(
-            alive & ~((previous == WALL_MID) | (previous == WALL_TOP)),
+            active & ~((previous == WALL_MID) | (previous == WALL_TOP)),
             fill(grid, cx - 1, cy, 1, 1, ENEMY_BARRIER),
             grid,
         )
-        cx = jnp.where(alive, cx + dx, cx)
-        grid = jnp.where(alive, fill(grid, cx, cy, 1, 1, ENEMY_BARRIER), grid)
+        cx = jnp.where(active, cx + dx, cx)
+        grid = jnp.where(active, fill(grid, cx, cy, 1, 1, ENEMY_BARRIER), grid)
 
-        return (grid, cx, cy, enemies, n_enemies, statics, n_statics), None
+        return (grid, cx, cy, enemies, n_enemies, statics, n_statics, state), None
 
     carry = (
         grid,
@@ -306,15 +412,16 @@ def generate_level(key: jax.Array):
         jnp.asarray(0, jnp.int32),
         statics,
         jnp.asarray(0, jnp.int32),
+        state,
     )
     carry, _ = jax.lax.scan(body, carry, jnp.arange(MAX_SECTIONS))
-    grid, cx, cy, enemies, n_enemies, statics, n_statics = carry
+    grid, cx, cy, enemies, n_enemies, statics, n_statics, _ = carry
 
     # The coin sits on a plinth one tile below it; the rest of the world is wall.
     grid = fill(grid, cx, cy, 1, 1, GOAL)
     grid = _fill_ground(grid, cx, 0, 1, cy)
     grid = fill(grid, cx + 1, 0, WORLD_DIM - cx - 1, WORLD_DIM, WALL_MID)
-    return grid, enemies, statics, n_enemies, n_statics
+    return grid, enemies, statics, n_enemies, n_statics, wall_theme, player_colour
 
 
 # --------------------------------------------------------------------------- #
@@ -323,8 +430,12 @@ def generate_level(key: jax.Array):
 class CoinRunEnv(Env):
     """ProcGen's ``coinrun`` as a functional, jit-friendly environment."""
 
-    def __init__(self, timeout: int = TIMEOUT):
+    def __init__(self, timeout: int = TIMEOUT, level_seed: int | None = None):
         self.timeout = timeout
+        #: With a seed the env replays exactly that level, forever; it is the same
+        #: level the reference implementation builds for the same seed.  Without
+        #: one, each episode draws its own seed from the episode key.
+        self.level_seed = level_seed
 
     # -- Env interface ----------------------------------------------------- #
     @property
@@ -358,7 +469,11 @@ class CoinRunEnv(Env):
 
     # -- game rules -------------------------------------------------------- #
     def reset_env_state(self, key: jax.Array) -> CoinRunState:
-        grid, enemies, statics, num_enemies, num_statics = generate_level(key)
+        if self.level_seed is None:
+            level_seed = jax.random.randint(key, (), 0, 2**31 - 1)
+        else:
+            level_seed = jnp.asarray(self.level_seed, jnp.int32)
+        grid, enemies, statics, num_enemies, num_statics, wall_theme, player_colour = generate_level(level_seed)
         return CoinRunState(
             grid=grid,
             agent=engine.entity(
@@ -367,6 +482,7 @@ class CoinRunEnv(Env):
                 rx=AGENT_RX,
                 ry=AGENT_RY,
                 type=engine.PLAYER,
+                image_theme=player_colour,
                 render_z=1,
                 smart_step=True,
             ),
@@ -380,6 +496,7 @@ class CoinRunEnv(Env):
             has_support=jnp.asarray(True),
             is_on_crate=jnp.asarray(False),
             facing_right=jnp.asarray(True),
+            wall_theme=wall_theme,
         )
 
     def step_env_state(self, env_state: CoinRunState, action: jax.Array):
@@ -480,6 +597,22 @@ class CoinRunEnv(Env):
         )
         agent = agent._replace(y=jnp.where(is_on_crate, crate_top + AGENT_RY, agent.y))
 
+        # ---- image_for_type: pick the animation frame the renderer shows ---- #
+        steps = env_state.steps
+        enemy_frame = jnp.where((steps // 5) % 2 == 0, ENEMY1, ENEMY2)
+        enemies = enemies._replace(
+            image_type=jnp.broadcast_to(enemy_frame, env_state.enemies.image_type.shape),
+            is_reflected=enemies.vx > 0,
+        )
+        saw_frame = jnp.where(steps % 2 == 0, SAW, SAW2)
+        statics = statics._replace(image_type=jnp.where(statics.type == SAW, saw_frame, statics.image_type))
+        idle = (jnp.abs(agent.vx) < 0.01) & (action_vx == 0) & has_support
+        walking = ((steps // 5) % 2 == 0) | ~has_support
+        agent = agent._replace(
+            image_type=jnp.where(idle, engine.PLAYER, jnp.where(walking, PLAYER_RIGHT1, PLAYER_RIGHT2)),
+            is_reflected=~facing_right,
+        )
+
         # ---- handle_agent_collision: touching a hazard ends the episode ------ #
         hit_enemy = (engine.collides(agent, enemies, engine.POS_EPS) & enemy_slots & (enemies.type == ENEMY)).any()
         hit_saw = (engine.collides(agent, statics, engine.POS_EPS) & static_slots & (statics.type == SAW)).any()
@@ -512,6 +645,7 @@ class CoinRunEnv(Env):
             has_support=has_support,
             is_on_crate=is_on_crate,
             facing_right=facing_right,
+            wall_theme=env_state.wall_theme,
         )
         return stepped, reward, terminated
 
@@ -539,9 +673,24 @@ class CoinRunEnv(Env):
         )
 
     def observe(self, env_state: CoinRunState) -> jax.Array:
-        """Render the agent-centred window with entity layers above the tiles."""
+        """Render the agent-centred window with sprite layers above the tiles."""
+        bodies = scene_entities(env_state)
+        is_player = jnp.isin(
+            bodies.image_type,
+            jnp.asarray([engine.PLAYER, PLAYER_JUMP, PLAYER_RIGHT1, PLAYER_RIGHT2]),
+        )
         center = jnp.stack([env_state.agent.x, env_state.agent.y])
-        return render_scene(env_state.grid, center, scene_entities(env_state), VISIBILITY, WALL_MID)
+        return render_textured(
+            env_state.grid,
+            center,
+            bodies,
+            TILE_SPRITES[env_state.wall_theme],
+            ENTITY_SPRITES[bodies.image_type, bodies.image_theme],
+            jnp.where(is_player, PLAYER_SPRITE_HEIGHT, 1.0),
+            sprites.PIXELS,
+            VISIBILITY,
+            WALL_MID,
+        )
 
 
 def scene_entities(env_state: CoinRunState) -> engine.Entity:

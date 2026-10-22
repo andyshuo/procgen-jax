@@ -45,6 +45,9 @@ class Entity(NamedTuple):
     rx: jax.Array
     ry: jax.Array
     type: jax.Array
+    image_type: jax.Array
+    image_theme: jax.Array
+    is_reflected: jax.Array
     render_z: jax.Array
     smart_step: jax.Array
     active: jax.Array
@@ -58,6 +61,9 @@ def entity(
     rx=0.5,
     ry=None,
     type=PLAYER,
+    image_type=None,
+    image_theme=0,
+    is_reflected=False,
     render_z=0,
     smart_step=False,
     active=True,
@@ -71,6 +77,9 @@ def entity(
         rx=jnp.asarray(rx, dtype=jnp.float32),
         ry=jnp.asarray(rx if ry is None else ry, dtype=jnp.float32),
         type=jnp.asarray(type, dtype=jnp.int32),
+        image_type=jnp.asarray(type if image_type is None else image_type, dtype=jnp.int32),
+        image_theme=jnp.asarray(image_theme, dtype=jnp.int32),
+        is_reflected=jnp.asarray(is_reflected),
         render_z=jnp.asarray(render_z, dtype=jnp.int32),
         smart_step=jnp.asarray(smart_step),
         active=jnp.asarray(active),

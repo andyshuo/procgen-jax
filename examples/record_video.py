@@ -19,15 +19,23 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from procgen_jax import CoinRunEnv, MazeEnv, engine
+from procgen_jax import CoinRunEnv, MazeEnv, engine, sprites
+from procgen_jax.games.coinrun import (
+    ENTITY_SPRITES,
+    PLAYER_SPRITE_HEIGHT,
+    TILE_SPRITES,
+    WALL_MID,
+    WALL_TOP,
+    WORLD_DIM,
+    scene_entities,
+)
 from procgen_jax.games.coinrun import GOAL as COIN
-from procgen_jax.games.coinrun import WALL_MID, WALL_TOP, WORLD_DIM, scene_entities
 from procgen_jax.objects import GOAL as MAZE_GOAL
 from procgen_jax.objects import WALL as MAZE_WALL
 from procgen_jax.recording import encode_video, rollout
-from procgen_jax.render import render_scene
+from procgen_jax.render import render_textured
 
-STEPS = 240
+STEPS = 160
 FPS = 20
 RIGHT, JUMP_FORWARD = 7, 8
 
@@ -96,11 +104,26 @@ def coinrun_frames(env, policy, key):
 
     _, states = jax.lax.scan(body, state, None, length=STEPS)
 
-    agent_view = jnp.repeat(jnp.repeat(states.obs, 4, axis=1), 4, axis=2)
+    agent_view = jnp.repeat(jnp.repeat(states.obs, 3, axis=1), 3, axis=2)
     centre = jnp.asarray([WORLD_DIM / 2, WORLD_DIM / 2])
-    whole_level = jax.vmap(
-        lambda s: render_scene(s.grid, centre, scene_entities(s), WORLD_DIM, WALL_MID, obs_size=256)
-    )(states.env_state)
+
+    def whole_level(state):
+        bodies = scene_entities(state)
+        is_player = jnp.isin(bodies.image_type, jnp.asarray([0, 9, 12, 13]))  # PLAYER, PLAYER_JUMP, PLAYER_RIGHT1/2
+        return render_textured(
+            state.grid,
+            centre,
+            bodies,
+            TILE_SPRITES[state.wall_theme],
+            ENTITY_SPRITES[bodies.image_type, bodies.image_theme],
+            jnp.where(is_player, PLAYER_SPRITE_HEIGHT, 1.0),
+            sprites.PIXELS,
+            WORLD_DIM,
+            WALL_MID,
+            obs_size=192,
+        )
+
+    whole_level = jax.vmap(whole_level)(states.env_state)
     return states.obs, jnp.concatenate([whole_level, agent_view], axis=2), states.reward
 
 
