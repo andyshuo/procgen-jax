@@ -540,20 +540,28 @@ class CoinRunEnv(Env):
 
     def observe(self, env_state: CoinRunState) -> jax.Array:
         """Render the agent-centred window with entity layers above the tiles."""
-        slots = jnp.arange(MAX_ENTITIES)
-        moving = jax.tree.map(
-            lambda value: jnp.where(slots < env_state.num_enemies, value, jnp.zeros_like(value)),
-            env_state.enemies,
-        )
-        resting = jax.tree.map(
-            lambda value: jnp.where(slots < env_state.num_statics, value, jnp.zeros_like(value)),
-            env_state.statics,
-        )
-        everything = jax.tree.map(
-            lambda agent, a, b: jnp.concatenate([agent[None], a, b]),
-            env_state.agent,
-            moving,
-            resting,
-        )
         center = jnp.stack([env_state.agent.x, env_state.agent.y])
-        return render_scene(env_state.grid, center, everything, VISIBILITY, WALL_MID)
+        return render_scene(env_state.grid, center, scene_entities(env_state), VISIBILITY, WALL_MID)
+
+
+def scene_entities(env_state: CoinRunState) -> engine.Entity:
+    """Every body of the level as one batched ``Entity``, for the renderer.
+
+    Inactive pool slots are zeroed so they cannot paint anything; the agent comes
+    first so its layer wins ties.
+    """
+    slots = jnp.arange(MAX_ENTITIES)
+    moving = jax.tree.map(
+        lambda value: jnp.where(slots < env_state.num_enemies, value, jnp.zeros_like(value)),
+        env_state.enemies,
+    )
+    resting = jax.tree.map(
+        lambda value: jnp.where(slots < env_state.num_statics, value, jnp.zeros_like(value)),
+        env_state.statics,
+    )
+    return jax.tree.map(
+        lambda agent, a, b: jnp.concatenate([agent[None], a, b]),
+        env_state.agent,
+        moving,
+        resting,
+    )

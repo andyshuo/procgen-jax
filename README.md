@@ -21,15 +21,19 @@ incremental cost per game is small now that `procgen_jax/engine.py` exists.
 
 ## Demo
 
-One episode of each game, recorded with `pixi run video docs` (200 frames at 20 fps,
+One episode of each game, recorded with `pixi run video docs` (240 frames at 20 fps,
 one jitted `lax.scan`, frames piped straight to `ffmpeg`):
 
-| `maze` | `coinrun` |
-| :----: | :-------: |
-| ![maze](docs/maze.gif) | ![coinrun](docs/coinrun.gif) |
+| `maze` -- shortest path to the goal | `coinrun` -- whole level, then the agent's view |
+| :---------------------------------: | :---------------------------------------------: |
+| ![maze](docs/maze.gif) | ![coinrun](docs/coinrun_map.gif) |
 
-`coinrun` is playing "hold right, jump every fifth step" -- which is enough to reach
-the coin, and is what the reachability test pins down.
+The left half of the `coinrun` recording is the whole 64x64 level -- the agent is the
+red square, saws are grey, crates brown, walking enemies purple, lava orange, and the
+green rows are the standable surface. The right half is the 64x64 observation the agent
+actually sees: an agent-centred 13-tile window (`visibility = 13`), at roughly five
+pixels per tile. The policy only walks right and jumps over walls and ledges, which is
+enough to reach the coin.
 
 ## Install
 
@@ -186,7 +190,9 @@ These are deliberate first-milestone choices, not bugs:
    but the 3x3 grid games only decode 0-8, so the extra slots are inert here instead
    of being snapped onto the nearest move.
 4. Levels are *not* bit-identical to the C++ implementation, because the RNG
-   sequence differs. The generation algorithm is the same.
+   sequence differs. The generation algorithm is the same, including its quirks: the
+   coin lands anywhere from x=8 to x=42 over 64 seeds (median 15), because
+   `difficulty = randn(3) + 1` gives a one-section level a third of the time.
 5. **`coinrun` observations are always agent-centred**, whereas ProcGen makes it an
    option; entity pushing is not ported, and `EasyMode` (`distribution_mode`) is not
    implemented, so every level uses the harder distribution.
