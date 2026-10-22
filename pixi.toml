@@ -37,6 +37,13 @@ description = "Record one episode of each game (default runs/, or pass a directo
 [tasks.video.env]
 PYTHONPATH = "."
 
+[tasks.play]
+cmd = "python examples/play.py"
+description = "Play a game in the terminal (see --help for keys and options)"
+
+[tasks.play.env]
+PYTHONPATH = "."
+
 [tasks.atlas]
 cmd = "python tools/build_atlas.py"
 description = "Download the Kenney sprites and build procgen_jax/data/sprites.npz"

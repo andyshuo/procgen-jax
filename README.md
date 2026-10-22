@@ -34,6 +34,28 @@ receives -- an agent-centred 13 tile window (`visibility = 13`), about five pixe
 tile. The policy only walks right and jumps over walls and ledges, which is enough to
 reach the coin.
 
+## Playing it yourself
+
+```bash
+pixi run play                    # coinrun, in the terminal
+pixi run play -- --game maze     # the other game
+pixi run play -- --seed 42       # a specific level (the C++ implementation's seed 42)
+pixi run play -- --eager         # literally no jax.jit
+```
+
+Keys: `a`/`d` or the arrows move, `w`/`up`/space jumps, `s` stands still, `p` pauses,
+`.` advances exactly one frame, `n`/`m` change the seed, `r` restarts, `q` quits.
+
+The observation is drawn with 24-bit colour half blocks, so 64x64 pixels fit in a
+64x32 character grid; `--ascii` falls back to a brightness ramp and
+`--record runs/me.gif` saves the frames you played, so a session can be compared
+against a ProcGen recording side by side.
+
+`--eager` really does skip `jax.jit`, but an uncompiled step dispatches thousands of
+primitives (one per corner sample, per sub-step, per entity), so expect about a second
+per frame -- usable for stepping through with `.`, not for playing. The default
+compiles `step` once at start-up and then runs at 20 fps; rendering is always eager.
+
 ## Install
 
 ```bash
