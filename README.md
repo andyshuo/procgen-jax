@@ -10,15 +10,26 @@ synchronisation per step, and `jax.vmap` turnaround for free.
 
 ## Status
 
-| Game       | Rules ported | Notes                                                       |
-| ---------- | ------------ | ----------------------------------------------------------- |
-| `maze`     | ✅            | Kruskal mazes, grid movement, goal reward                    |
-| `coinrun`  | ✅            | platformer physics, lava/saw/enemy deaths, coin, crates      |
-|            |              | levels are verified completable by a greedy policy           |
+| Game       | Rules ported | Notes                                                      |
+| ---------- | ------------ | ---------------------------------------------------------- |
+| `maze`     | ✅            | Kruskal mazes, grid movement, goal reward                   |
+| `coinrun`  | ✅            | platformer physics, hazards, coin; verified completable      |
 
 The remaining 14 games are planned; see the roadmap below. Each game in the
 original is only 121-523 lines of logic on top of a shared engine, so the
 incremental cost per game is small now that `procgen_jax/engine.py` exists.
+
+## Demo
+
+One episode of each game, recorded with `pixi run video docs` (200 frames at 20 fps,
+one jitted `lax.scan`, frames piped straight to `ffmpeg`):
+
+| `maze` | `coinrun` |
+| :----: | :-------: |
+| ![maze](docs/maze.gif) | ![coinrun](docs/coinrun.gif) |
+
+`coinrun` is playing "hold right, jump every fifth step" -- which is enough to reach
+the coin, and is what the reachability test pins down.
 
 ## Install
 

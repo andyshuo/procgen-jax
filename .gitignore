@@ -17,3 +17,6 @@ logs/
 *.gif
 *.mp4
 *.npz
+
+# ...except the demo recordings embedded in the README
+!docs/*.gif

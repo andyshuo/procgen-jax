@@ -32,7 +32,7 @@ PYTHONPATH = "."
 
 [tasks.video]
 cmd = "python examples/record_video.py"
-description = "Record one episode of each game to runs/*.gif"
+description = "Record one episode of each game (default runs/, or pass a directory)"
 
 [tasks.video.env]
 PYTHONPATH = "."

@@ -1,11 +1,13 @@
-"""Record one episode of each game to ``runs/``.
+"""Record one episode of each game.
 
-    pixi run video
+    pixi run video           # -> runs/*.gif   (ignored by git)
+    pixi run video docs      # -> docs/*.gif   (the copies in the README)
 
 Frames are produced by a single jitted ``lax.scan`` and handed to ``ffmpeg`` as
 raw RGB, so nothing beyond JAX/NumPy is needed.
 """
 
+import sys
 from pathlib import Path
 
 import jax
@@ -43,7 +45,7 @@ def record(name, env, actions, out_dir: Path) -> Path:
 
 
 def main() -> None:
-    out_dir = Path('runs')
+    out_dir = Path(sys.argv[1] if len(sys.argv) > 1 else 'runs')
     out_dir.mkdir(exist_ok=True)
 
     maze = MazeEnv(world_dim=15)
