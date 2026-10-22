@@ -93,14 +93,30 @@ class Keyboard:
         termios.tcsetattr(self.fd, termios.TCSADRAIN, self.saved)
         return False
 
-    def read(self, timeout: float) -> str:
-        if timeout <= 0 or not select.select([self.stream], [], [], timeout)[0]:
-            return ''
-        data = os.read(self.fd, 8).decode('utf-8', 'ignore')
-        # Arrow keys arrive as ESC [ A/B/C/D.
-        if data.startswith('\x1b[') and len(data) >= 3:
-            return {'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left'}.get(data[2], '')
-        return data
+    def read(self, timeout: float) -> list[str]:
+        """Key presses since the last call, newest last.
+
+        A single ``read`` can return several bytes -- a fast typist, a terminal
+        repeating a held key, or an escape sequence arriving in one chunk -- so the
+        buffer is split into individual keys instead of being matched whole.
+        """
+        # Always poll the descriptor: a frame can take longer than the frame
+        # interval (especially with --eager), and a negative timeout must mean
+        # "do not wait", not "do not look".
+        if not select.select([self.stream], [], [], max(0.0, timeout))[0]:
+            return []
+        data = os.read(self.fd, 64).decode('utf-8', 'ignore')
+
+        arrows = {'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left'}
+        keys, index = [], 0
+        while index < len(data):
+            if data[index] == '\x1b' and data[index + 1 : index + 2] == '[':
+                keys.append(arrows.get(data[index + 2 : index + 3], ''))
+                index += 3
+            else:
+                keys.append(data[index])
+                index += 1
+        return [key for key in keys if key]
 
 
 def build(game: str, seed):
@@ -164,37 +180,44 @@ def main() -> int:
         print('stdin/stdout are not a TTY; use --auto for a headless run', file=sys.stderr)
         return 2
 
+    def apply(key: str) -> None:
+        """One key press, applied to the latched input and the loop state."""
+        nonlocal horizontal, jump, paused, running, seed, state
+        if key in ('a', 'left'):
+            horizontal = -1
+        elif key in ('d', 'right'):
+            horizontal = 1
+        elif key == 's':
+            horizontal = 0
+        elif key in ('w', 'up', ' '):
+            jump = True
+        elif key == 'q':
+            running = False
+        elif key == 'r':
+            restart(seed)
+            frames.clear()
+        elif key in ('n', 'm') and args.game == 'coinrun':
+            seed = (seed or 0) + (1 if key == 'n' else -1)
+            restart(seed)
+            frames.clear()
+        elif key == 'p':
+            paused = not paused
+        elif key == '.':  # one frame at a time, paused or not
+            state = step(state, jnp.asarray(action_of(horizontal, jump)))
+            jump = False
+            frames.append(np.asarray(state.obs))
+
     with keyboard:
         sys.stdout.write(HIDE_CURSOR)
         next_tick = time.perf_counter()
         try:
             while running:
-                pressed = keyboard.read(max(0.0, next_tick - time.perf_counter()))
-                if pressed in ('a', 'left'):
-                    horizontal = -1
-                elif pressed in ('d', 'right'):
-                    horizontal = 1
-                elif pressed == 's':
-                    horizontal = 0
-                elif pressed in ('w', 'up', ' '):
-                    jump = True
-                elif pressed == 'q':
-                    running = False
-                elif pressed == 'r':
-                    restart(seed)
-                    frames.clear()
-                elif pressed in ('n', 'm') and args.game == 'coinrun':
-                    seed = (seed or 0) + (1 if pressed == 'n' else -1)
-                    restart(seed)
-                    frames.clear()
-                elif pressed == 'p':
-                    paused = not paused
-                elif pressed == '.':  # one frame at a time, paused or not
-                    state = step(state, jnp.asarray(action_of(horizontal, jump)))
-                    jump = False
-                    frames.append(np.asarray(state.obs))
+                for key in keyboard.read(max(0.0, next_tick - time.perf_counter())):
+                    apply(key)
+                if not running:
+                    break
 
-                if running and not paused:
+                if not paused:
                     state = step(state, jnp.asarray(action_of(horizontal, jump)))
                     jump = False
                     frames.append(np.asarray(state.obs))
@@ -205,7 +228,6 @@ def main() -> int:
                 else:
                     where = f'({float(agent[0]):.2f},{float(agent[1]):.2f})'
 
-                obs = np.asarray(state.obs)
                 header = (
                     f'{args.game}  seed={seed}  steps={int(state.env_state.steps)}  '
                     f'return={float(state.reward):.1f}  pos={where}'
@@ -214,7 +236,7 @@ def main() -> int:
                     header += '  [EPISODE ENDED]'
                 if paused:
                     header += '  [paused: . to step, p to resume]'
-                sys.stdout.write(CLEAR + header + '\n' + render(obs) + '\n')
+                sys.stdout.write(CLEAR + header + '\n' + render(np.asarray(state.obs)) + '\n')
                 sys.stdout.flush()
 
                 next_tick += interval

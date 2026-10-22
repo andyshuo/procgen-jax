@@ -37,11 +37,18 @@ reach the coin.
 ## Playing it yourself
 
 ```bash
-pixi run play                    # coinrun, in the terminal
+pixi run webplay                 # browser window: open http://127.0.0.1:8010
+pixi run play                    # the same game in the terminal
 pixi run play -- --game maze     # the other game
 pixi run play -- --seed 42       # a specific level (the C++ implementation's seed 42)
 pixi run play -- --eager         # literally no jax.jit
 ```
+
+`webplay` is the one to use if you want to look at the picture: it serves a page whose
+canvas shows the 64x64 observation scaled up with nearest-neighbour, so what you see is
+exactly what the agent receives. Frames go over localhost as raw RGB, so there is no
+image encoder and no extra dependency. `pixi run webplay -- --seed 42` pins a level and
+`/?seed=42` does the same from the address bar.
 
 Keys: `a`/`d` or the arrows move, `w`/`up`/space jumps, `s` stands still, `p` pauses,
 `.` advances exactly one frame, `n`/`m` change the seed, `r` restarts, `q` quits.

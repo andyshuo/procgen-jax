@@ -44,6 +44,13 @@ description = "Play a game in the terminal (see --help for keys and options)"
 [tasks.play.env]
 PYTHONPATH = "."
 
+[tasks.webplay]
+cmd = "python examples/webplay.py"
+description = "Play in a browser window: open http://127.0.0.1:8010"
+
+[tasks.webplay.env]
+PYTHONPATH = "."
+
 [tasks.atlas]
 cmd = "python tools/build_atlas.py"
 description = "Download the Kenney sprites and build procgen_jax/data/sprites.npz"
