@@ -32,6 +32,11 @@ UP, LEFT, DOWN, NOOP, RIGHT = 3, 1, 5, 4, 7
 JIT_ENV = BigFishEnv()
 jit_step = jax.jit(JIT_ENV.step)
 
+# Reset runs the level generator (and, for leaper, a 300 step warm-up);
+# jitting it keeps the suite out of eager scans.
+jit_reset = jax.jit(JIT_ENV.reset)
+jit_reset_state = jax.jit(JIT_ENV.reset_env_state)
+
 
 def make_pool(entities) -> engine.Entity:
     pool = empty_fish_pool()
@@ -42,7 +47,7 @@ def make_pool(entities) -> engine.Entity:
 
 def state_with(env, fish=(), agent=None, steps=0, fish_eaten=0):
     """Wrap a hand-written arena into the env's :class:`State`."""
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     return env.state_from(
         base._replace(
             agent=base.agent if agent is None else agent,
@@ -73,7 +78,7 @@ def test_env_exposes_sizes(env):
 
 
 def test_reset_returns_a_state_with_an_observation(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     assert state.obs.shape == (64, 64, 3)
     assert state.obs.dtype == jnp.uint8
@@ -84,7 +89,7 @@ def test_reset_returns_a_state_with_an_observation(env):
 
 
 def test_the_grid_is_empty_and_the_world_is_twenty_tiles(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     assert state.env_state.grid.shape == (WORLD_DIM, WORLD_DIM)
     assert np.all(np.asarray(state.env_state.grid) == SPACE)
@@ -92,7 +97,7 @@ def test_the_grid_is_empty_and_the_world_is_twenty_tiles(env):
 
 def test_agent_starts_inside_the_world(env):
     for seed in range(8):
-        x = float(env.reset(jax.random.PRNGKey(seed)).env_state.agent.x)
+        x = float(jit_reset(jax.random.PRNGKey(seed)).env_state.agent.x)
         assert 0.4 <= x <= WORLD_DIM - 0.4
 
 
@@ -104,7 +109,7 @@ def test_level_seed_pins_the_start(env):
 
 
 def test_different_keys_start_somewhere_else(env):
-    xs = {round(float(env.reset(jax.random.PRNGKey(seed)).env_state.agent.x), 3) for seed in range(8)}
+    xs = {round(float(jit_reset(jax.random.PRNGKey(seed)).env_state.agent.x), 3) for seed in range(8)}
 
     assert len(xs) > 1
 
@@ -114,21 +119,21 @@ def test_different_keys_start_somewhere_else(env):
 # --------------------------------------------------------------------------- #
 def test_pressing_up_moves_the_agent_up(env):
     """``vy = -1`` for action 3, and the arena has no gravity."""
-    state = jit_step(env.reset(jax.random.PRNGKey(0)), jnp.asarray(UP))
+    state = jit_step(jit_reset(jax.random.PRNGKey(0)), jnp.asarray(UP))
 
     assert float(state.env_state.agent.vy) < 0.0
     assert float(state.env_state.agent.y) < 1 + START_R
 
 
 def test_pressing_right_moves_the_agent_right(env):
-    state = jit_step(env.reset(jax.random.PRNGKey(0)), jnp.asarray(RIGHT))
+    state = jit_step(jit_reset(jax.random.PRNGKey(0)), jnp.asarray(RIGHT))
 
     assert float(state.env_state.agent.vx) > 0.0
     assert float(state.env_state.agent.x) > 0.0
 
 
 def test_velocity_decays_when_no_action_is_given(env):
-    state = jit_step(env.reset(jax.random.PRNGKey(0)), jnp.asarray(RIGHT))
+    state = jit_step(jit_reset(jax.random.PRNGKey(0)), jnp.asarray(RIGHT))
     fast = float(state.env_state.agent.vx)
 
     state = jit_step(state, jnp.asarray(NOOP))
@@ -138,7 +143,7 @@ def test_velocity_decays_when_no_action_is_given(env):
 
 def test_the_agent_cannot_leave_the_world(env):
     """``out_of_bounds_object`` is ``INVALID_OBJ`` here, which blocks like a wall."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     for _ in range(40):
         state = jit_step(state, jnp.asarray(UP))
 
@@ -148,7 +153,7 @@ def test_the_agent_cannot_leave_the_world(env):
 
 @pytest.mark.parametrize('action', [9, 10, 11, 12, 13, 14])
 def test_action_slots_past_the_grid_are_noops(env, action):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     stepped = jit_step(state, jnp.asarray(action))
 
@@ -160,7 +165,7 @@ def test_action_slots_past_the_grid_are_noops(env, action):
 # eating and dying
 # --------------------------------------------------------------------------- #
 def test_eating_a_smaller_fish_rewards_and_grows(env):
-    agent = env.reset_env_state(jax.random.PRNGKey(0)).agent
+    agent = jit_reset_state(jax.random.PRNGKey(0)).agent
     state = state_with(env, fish=[fish_at(float(agent.x), float(agent.y), r=0.25)], agent=agent)
 
     stepped = jit_step(state, jnp.asarray(NOOP))
@@ -173,7 +178,7 @@ def test_eating_a_smaller_fish_rewards_and_grows(env):
 
 
 def test_touching_a_bigger_fish_ends_the_episode(env):
-    agent = env.reset_env_state(jax.random.PRNGKey(0)).agent
+    agent = jit_reset_state(jax.random.PRNGKey(0)).agent
     state = state_with(env, fish=[fish_at(float(agent.x), float(agent.y), r=1.0)], agent=agent)
 
     stepped = jit_step(state, jnp.asarray(NOOP))
@@ -185,7 +190,7 @@ def test_touching_a_bigger_fish_ends_the_episode(env):
 
 def test_a_fish_of_equal_size_is_eaten(env):
     """The original compares ``obj->rx > agent->rx``, so ties go to the agent."""
-    agent = env.reset_env_state(jax.random.PRNGKey(0)).agent
+    agent = jit_reset_state(jax.random.PRNGKey(0)).agent
     state = state_with(env, fish=[fish_at(float(agent.x), float(agent.y), r=START_R)], agent=agent)
 
     stepped = jit_step(state, jnp.asarray(NOOP))
@@ -195,7 +200,7 @@ def test_a_fish_of_equal_size_is_eaten(env):
 
 
 def test_the_quota_pays_the_bonus_and_ends_the_episode(env):
-    agent = env.reset_env_state(jax.random.PRNGKey(0)).agent
+    agent = jit_reset_state(jax.random.PRNGKey(0)).agent
     state = state_with(
         env,
         fish=[fish_at(float(agent.x), float(agent.y), r=0.25)],
@@ -213,7 +218,7 @@ def test_the_quota_pays_the_bonus_and_ends_the_episode(env):
 
 
 def test_distant_fish_is_untouched(env):
-    agent = env.reset_env_state(jax.random.PRNGKey(0)).agent
+    agent = jit_reset_state(jax.random.PRNGKey(0)).agent
     state = state_with(env, fish=[fish_at(float(agent.x) + 5.0, float(agent.y), r=0.25)], agent=agent)
 
     stepped = jit_step(state, jnp.asarray(NOOP))
@@ -226,7 +231,7 @@ def test_distant_fish_is_untouched(env):
 # spawning
 # --------------------------------------------------------------------------- #
 def test_fish_spawn_and_swim_across_the_arena(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     def body(carry, action):
         carry = jit_step(carry, action)
@@ -240,7 +245,7 @@ def test_fish_spawn_and_swim_across_the_arena(env):
 
 def test_spawned_fish_are_flat_and_inside_their_lane(env):
     """``match_aspect_ratio`` squashes the fish, and they enter from the edges."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     def body(carry, action):
         carry = jit_step(carry, action)
@@ -271,7 +276,7 @@ def test_timeout_truncates():
 
 
 def test_auto_reset_clears_the_arena(env):
-    agent = env.reset_env_state(jax.random.PRNGKey(0)).agent
+    agent = jit_reset_state(jax.random.PRNGKey(0)).agent
     state = state_with(env, fish=[fish_at(float(agent.x), float(agent.y), r=1.0)], agent=agent)
 
     stepped = jit_step(state, jnp.asarray(NOOP))
@@ -286,7 +291,7 @@ def test_auto_reset_clears_the_arena(env):
 # --------------------------------------------------------------------------- #
 def test_observation_shows_the_whole_world(env):
     """``center_agent`` is off, so the corners of the window are the arena."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
     water = np.asarray(WATER, np.uint8)
 
@@ -296,7 +301,7 @@ def test_observation_shows_the_whole_world(env):
 
 def test_observation_draws_the_player(env):
     """The camera is fixed on the world, so the player is where its body is."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
     water = np.asarray(WATER, np.uint8)
     unit = 64 / WORLD_DIM
@@ -311,7 +316,7 @@ def test_observation_draws_the_player(env):
 # jit / vmap / scan
 # --------------------------------------------------------------------------- #
 def test_step_is_jittable(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     stepped = jax.jit(env.step)(state, jnp.asarray(RIGHT))
 
@@ -321,7 +326,7 @@ def test_step_is_jittable(env):
 
 
 def test_whole_episode_runs_under_scan(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     actions = jax.random.randint(jax.random.PRNGKey(1), (64,), 0, 15)
 
     def body(carry, action):

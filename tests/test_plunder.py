@@ -36,6 +36,11 @@ UP, LEFT, DOWN, NOOP, RIGHT = 5, 1, 3, 4, 7
 JIT_ENV = PlunderEnv()
 jit_step = jax.jit(JIT_ENV.step)
 
+# Reset runs the level generator (and, for leaper, a 300 step warm-up);
+# jitting it keeps the suite out of eager scans.
+jit_reset = jax.jit(JIT_ENV.reset)
+jit_reset_state = jax.jit(JIT_ENV.reset_env_state)
+
 
 def make_pool(entities) -> engine.Entity:
     pool = empty_pool()
@@ -45,7 +50,7 @@ def make_pool(entities) -> engine.Entity:
 
 
 def state_with(env, entities=(), agent=None, juice=None, targets_hit=0, steps=0):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     return env.state_from(
         base._replace(
             agent=base.agent if agent is None else agent,
@@ -92,7 +97,7 @@ def test_env_exposes_sizes(env):
 
 
 def test_reset_builds_a_sea_with_a_legend(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     board = state.env_state
     pool = board.entities
     active = np.asarray(pool.active)
@@ -105,7 +110,7 @@ def test_reset_builds_a_sea_with_a_legend(env):
 
 
 def test_the_target_is_one_of_the_six_ship_designs(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     board = state.env_state
 
     assert len(np.unique(np.asarray(board.image_permutation))) == NUM_SHIP_TYPES
@@ -115,14 +120,14 @@ def test_the_target_is_one_of_the_six_ship_designs(env):
 
 def test_the_player_is_not_the_target(env):
     for seed in range(6):
-        board = env.reset(jax.random.PRNGKey(seed)).env_state
+        board = jit_reset(jax.random.PRNGKey(seed)).env_state
         theme = int(board.agent.image_theme)
         assert not bool(board.target_bools[theme]), 'the player starts as a friendly ship'
 
 
 def test_panels_sit_in_the_middle_band(env):
     for seed in range(6):
-        board = env.reset(jax.random.PRNGKey(seed)).env_state
+        board = jit_reset(jax.random.PRNGKey(seed)).env_state
         pool = board.entities
         panels = np.asarray(pool.active) & (np.asarray(pool.type) == PANEL)
         ys = np.asarray(pool.y)[panels]
@@ -131,7 +136,7 @@ def test_panels_sit_in_the_middle_band(env):
 
 
 def test_five_lanes_with_alternating_speeds(env):
-    board = env.reset(jax.random.PRNGKey(0)).env_state
+    board = jit_reset(jax.random.PRNGKey(0)).env_state
 
     assert board.lane_vels.shape == (NUM_LANES,)
     assert np.all(np.asarray(board.lane_vels) >= 0.15)
@@ -149,7 +154,7 @@ def test_level_seed_pins_the_fleet(env):
 # steering and firing
 # --------------------------------------------------------------------------- #
 def test_the_ship_only_moves_horizontally(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     start_y = float(state.env_state.agent.y)
 
     for action in (UP, DOWN):
@@ -158,7 +163,7 @@ def test_the_ship_only_moves_horizontally(env):
 
 
 def test_steering_right_accelerates(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     start = float(state.env_state.agent.x)
 
     for _ in range(8):
@@ -168,7 +173,7 @@ def test_steering_right_accelerates(env):
 
 
 def test_the_ship_cannot_pass_the_legend(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     for _ in range(40):
         state = jit_step(state, jnp.asarray(LEFT))
@@ -177,7 +182,7 @@ def test_the_ship_cannot_pass_the_legend(env):
 
 
 def test_firing_spawns_a_bullet_on_a_cooldown(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     def bullets(state):
         return int((state.env_state.entities.active & (state.env_state.entities.type == PLAYER_BULLET)).sum())
@@ -196,7 +201,7 @@ def test_firing_spawns_a_bullet_on_a_cooldown(env):
 
 
 def test_holding_fire_keeps_to_the_cooldown(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     for _ in range(12):
         state = jit_step(state, jnp.asarray(FIRE_ACTION))
@@ -206,7 +211,7 @@ def test_holding_fire_keeps_to_the_cooldown(env):
 
 
 def test_firing_costs_juice(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     before = float(state.env_state.juice_left)
 
     for _ in range(3):
@@ -226,7 +231,7 @@ def test_bullets_expire(env):
 
 @pytest.mark.parametrize('action', [10, 11, 12, 13, 14])
 def test_only_action_nine_fires(env, action):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     for _ in range(4):
         state = jit_step(state, jnp.asarray(action))
@@ -239,7 +244,7 @@ def test_only_action_nine_fires(env, action):
 # scoring
 # --------------------------------------------------------------------------- #
 def test_hitting_the_target_scores_and_refills(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     target_theme = int(np.flatnonzero(np.asarray(base.target_bools))[0])
     state = state_with(
         env,
@@ -257,7 +262,7 @@ def test_hitting_the_target_scores_and_refills(env):
 
 
 def test_hitting_a_friendly_ship_drains_juice(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     friendly = 0 if not bool(base.target_bools[0]) else 1
     state = state_with(
         env,
@@ -273,7 +278,7 @@ def test_hitting_a_friendly_ship_drains_juice(env):
 
 
 def test_a_bullet_stops_on_a_panel(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     panel = engine.entity(10.0, 6.5, rx=1.2, ry=0.5, type=PANEL, image_type=PANEL, active=True)
     state = state_with(
         env,
@@ -298,7 +303,7 @@ def test_empty_juice_ends_the_episode(env):
 
 
 def test_the_quota_pays_the_bonus(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     target_theme = int(np.flatnonzero(np.asarray(base.target_bools))[0])
     state = state_with(
         env,
@@ -334,7 +339,7 @@ def test_timeout_matches_the_original():
 # traffic, observations, jit
 # --------------------------------------------------------------------------- #
 def test_ships_keep_arriving_and_stay_in_the_pool(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     def body(carry, action):
         carry = jit_step(carry, action)
@@ -348,7 +353,7 @@ def test_ships_keep_arriving_and_stay_in_the_pool(env):
 
 def test_ships_face_the_way_they_drive(env):
     """``is_reflected = !moves_right``: the sprite mirror follows the lane direction."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     def body(carry, action):
         carry = jit_step(carry, action)
@@ -365,7 +370,7 @@ def test_ships_face_the_way_they_drive(env):
 
 
 def test_observation_shows_the_sea_and_the_fleet(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
     assert obs.shape == (64, 64, 3)
@@ -374,7 +379,7 @@ def test_observation_shows_the_sea_and_the_fleet(env):
 
 
 def test_step_is_jittable(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     stepped = jax.jit(env.step)(state, jnp.asarray(RIGHT))
 
@@ -395,7 +400,7 @@ def test_vmap_reset_and_step(env):
 
 
 def test_whole_episode_runs_under_scan(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     actions = jax.random.randint(jax.random.PRNGKey(1), (64,), 0, 15)
 
     def body(carry, action):

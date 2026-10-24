@@ -93,6 +93,11 @@ def env():
 JIT_ENV = CoinRunEnv()
 jit_step = jax.jit(JIT_ENV.step)
 
+# Reset runs the level generator (and, for leaper, a 300 step warm-up);
+# jitting it keeps the suite out of eager scans.
+jit_reset = jax.jit(JIT_ENV.reset)
+jit_reset_state = jax.jit(JIT_ENV.reset_env_state)
+
 
 # --------------------------------------------------------------------------- #
 # level generation
@@ -200,7 +205,7 @@ def test_env_exposes_sizes(env):
 
 
 def test_reset_returns_a_state_with_an_observation(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     assert state.obs.shape == (64, 64, 3)
     assert state.obs.dtype == jnp.uint8
@@ -376,7 +381,7 @@ def test_action_slots_past_the_grid_do_not_move(env, action):
 # observations
 # --------------------------------------------------------------------------- #
 def test_observation_draws_the_player_at_the_centre(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
     # The player sprite is centred in its own window, so nothing else can be there.
@@ -385,14 +390,14 @@ def test_observation_draws_the_player_at_the_centre(env):
 
 def test_observation_pads_outside_the_world_with_walls(env):
     """The agent starts at x = 1.5, so the left edge of the window is outside."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
     assert not np.array_equal(obs[32, 0], np.asarray(SKY_COLOUR, np.uint8))
 
 
 def test_observation_shows_the_floor_below_the_agent(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
     assert not np.array_equal(obs[37, 32], np.asarray(SKY_COLOUR, np.uint8))
@@ -424,7 +429,7 @@ def test_sprite_tables_cover_every_object_the_game_draws():
 # jit / vmap / scan
 # --------------------------------------------------------------------------- #
 def test_step_is_jittable(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     stepped = jax.jit(env.step)(state, jnp.asarray(RIGHT))
 
@@ -434,7 +439,7 @@ def test_step_is_jittable(env):
 
 
 def test_whole_episode_runs_under_scan(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     actions = jax.random.randint(jax.random.PRNGKey(1), (32,), 0, 15)
 
     def body(carry, action):

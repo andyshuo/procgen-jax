@@ -31,6 +31,11 @@ UP, LEFT, DOWN, NOOP, RIGHT = 5, 1, 3, 4, 7
 JIT_ENV = LeaperEnv()
 jit_step = jax.jit(JIT_ENV.step)
 
+# Reset runs the level generator (and, for leaper, a 300 step warm-up);
+# jitting it keeps the suite out of eager scans.
+jit_reset = jax.jit(JIT_ENV.reset)
+jit_reset_state = jax.jit(JIT_ENV.reset_env_state)
+
 
 def make_pool(entities) -> engine.Entity:
     pool = empty_pool()
@@ -40,7 +45,7 @@ def make_pool(entities) -> engine.Entity:
 
 
 def state_with(env, agent=None, entities=(), finish=None, steps=0):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     return env.state_from(
         base._replace(
             agent=base.agent if agent is None else agent,
@@ -82,7 +87,7 @@ def test_env_exposes_sizes(env):
 
 
 def test_reset_builds_a_board(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     board = state.env_state
     grid = np.asarray(board.grid)
 
@@ -99,7 +104,7 @@ def test_reset_builds_a_board(env):
 
 
 def test_the_frog_starts_on_the_bottom_row(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     assert np.isclose(float(state.env_state.agent.y), float(state.env_state.agent.ry))
     assert float(state.env_state.agent.x) > 0
@@ -107,7 +112,7 @@ def test_the_frog_starts_on_the_bottom_row(env):
 
 def test_reset_warms_the_traffic_up(env):
     """The original runs 300 spawn-and-step iterations before the agent starts."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     pool = state.env_state.entities
 
     assert int(pool.active.sum()) > 0
@@ -138,7 +143,7 @@ def test_levels_differ_across_seeds(env):
 # --------------------------------------------------------------------------- #
 def test_a_hop_moves_exactly_one_tile(env):
     """MAX_SPEED then VEL_DECAY: 0.4 + 0.3 + 0.2 + 0.1 = 1.0 over NSTEP steps."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     start = float(state.env_state.agent.y)
 
     state = jit_step(state, jnp.asarray(UP))
@@ -151,7 +156,7 @@ def test_a_hop_moves_exactly_one_tile(env):
 
 def test_a_hop_cannot_be_restarted_mid_air(env):
     """``update_agent_velocity`` only fires while both velocities are zero."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     state = jit_step(state, jnp.asarray(UP))
     moving = float(state.env_state.agent.vy)
 
@@ -161,7 +166,7 @@ def test_a_hop_cannot_be_restarted_mid_air(env):
 
 
 def test_the_frog_animates_while_hopping(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     state = jit_step(state, jnp.asarray(UP))
 
@@ -169,7 +174,7 @@ def test_the_frog_animates_while_hopping(env):
 
 
 def test_velocity_decays_to_a_stop(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     state = jit_step(state, jnp.asarray(RIGHT))
 
     for _ in range(NSTEP):
@@ -180,7 +185,7 @@ def test_velocity_decays_to_a_stop(env):
 
 @pytest.mark.parametrize('action', [9, 10, 11, 12, 13, 14])
 def test_action_slots_past_the_grid_are_noops(env, action):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     stepped = jit_step(state, jnp.asarray(action))
 
@@ -192,7 +197,7 @@ def test_action_slots_past_the_grid_are_noops(env, action):
 # hazards
 # --------------------------------------------------------------------------- #
 def test_a_car_ends_the_episode(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     car = body_at(float(base.agent.x), float(base.agent.y), CAR, rx=0.5, ry=0.25)
     state = state_with(env, entities=[car])
 
@@ -203,7 +208,7 @@ def test_a_car_ends_the_episode(env):
 
 
 def test_standing_still_on_water_drowns(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     agent = base.agent._replace(y=jnp.asarray(float(base.bottom_water_y) + 0.5, jnp.float32))
     state = state_with(env, agent=agent)
 
@@ -213,7 +218,7 @@ def test_standing_still_on_water_drowns(env):
 
 
 def test_a_log_underneath_keeps_the_frog_alive_and_carries_it(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     agent = base.agent._replace(
         x=jnp.asarray(5.0, jnp.float32), y=jnp.asarray(float(base.bottom_water_y) + 0.5, jnp.float32)
     )
@@ -227,7 +232,7 @@ def test_a_log_underneath_keeps_the_frog_alive_and_carries_it(env):
 
 
 def test_the_finish_line_requires_standing_still(env):
-    base = env.reset_env_state(jax.random.PRNGKey(0))
+    base = jit_reset_state(jax.random.PRNGKey(0))
     finish_y = float(base.finish.y)
     agent = base.agent._replace(x=jnp.asarray(float(base.finish.x), jnp.float32), y=jnp.asarray(finish_y, jnp.float32))
 
@@ -258,7 +263,7 @@ def test_timeout_matches_the_original():
 # traffic
 # --------------------------------------------------------------------------- #
 def test_traffic_stays_within_the_pool(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     def body(carry, action):
         carry = jit_step(carry, action)
@@ -272,7 +277,7 @@ def test_traffic_stays_within_the_pool(env):
 
 def test_traffic_drives_across_the_board(env):
     """Cars and logs only ever move horizontally, at their lane speed."""
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     def body(carry, action):
         carry = jit_step(carry, action)
@@ -291,7 +296,7 @@ def test_traffic_drives_across_the_board(env):
 # observations
 # --------------------------------------------------------------------------- #
 def test_observation_shows_the_whole_board(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     obs = np.asarray(state.obs)
 
     assert obs.shape == (64, 64, 3)
@@ -300,7 +305,7 @@ def test_observation_shows_the_whole_board(env):
 
 
 def test_step_is_jittable(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
 
     stepped = jax.jit(env.step)(state, jnp.asarray(UP))
 
@@ -321,7 +326,7 @@ def test_vmap_reset_and_step(env):
 
 
 def test_whole_episode_runs_under_scan(env):
-    state = env.reset(jax.random.PRNGKey(0))
+    state = jit_reset(jax.random.PRNGKey(0))
     actions = jax.random.randint(jax.random.PRNGKey(1), (64,), 0, 15)
 
     def body(carry, action):
