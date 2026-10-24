@@ -15,6 +15,7 @@ dist/
 .atlas_cache/
 .reference_cache/
 .randgen_ref/
+.fish_tmp/
 
 # Outputs
 runs/
