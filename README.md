@@ -26,8 +26,9 @@ synchronisation per step, and `jax.vmap` turnaround for free.
 | `caveflyer`| ✅            | lunar lander in a cave: turn, thrust, shoot the red saucers  |
 | `ninja`    | ✅            | platformer: charged jumps, fire floors, throwing stars        |
 | `climber`  | ✅            | vertical shaft: leap between platforms, collect every crystal |
+| `miner`    | ✅            | Boulder Dash: dig diamonds, dodge falling rocks, find the exit |
 
-The remaining 2 games are planned; see the roadmap below. Each game in the
+The remaining 1 games are planned; see the roadmap below. Each game in the
 original is only 121-523 lines of logic on top of a shared engine, so the
 incremental cost per game is small now that `procgen_jax/engine.py` exists.
 
@@ -271,7 +272,7 @@ These are deliberate first-milestone choices, not bugs:
 
 - [x] `coinrun` -- platformer physics, so the engine has a second consumer.
 - [x] Shared engine primitives (`Entity`, `is_blocked`, sub-stepped collisions).
-- [ ] Port the remaining 2 games (next: `miner`, `bossfight`).
+- [ ] Port the remaining 1 game (next: `bossfight`).
 - [x] Sprite-based rendering (`pixi run atlas`).
 - [x] Level-parity harness against the C++ implementation (`pixi run reference`).
 - [ ] PPO baseline + throughput comparison against the original.

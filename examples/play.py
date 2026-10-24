@@ -41,6 +41,7 @@ from procgen_jax import (
     JumperEnv,
     LeaperEnv,
     MazeEnv,
+    MinerEnv,
     NinjaEnv,
     PlunderEnv,
     StarPilotEnv,
@@ -161,6 +162,8 @@ def build(game: str, seed):
         env = NinjaEnv(level_seed=seed)
     elif game == 'climber':
         env = ClimberEnv(level_seed=seed)
+    elif game == 'miner':
+        env = MinerEnv(level_seed=seed)
     else:
         env = CoinRunEnv(level_seed=seed)
     return env
@@ -186,6 +189,7 @@ def main() -> int:
             'caveflyer',
             'ninja',
             'climber',
+            'miner',
         ],
     )
     parser.add_argument('--seed', type=int, default=None, help='pin the level seed')

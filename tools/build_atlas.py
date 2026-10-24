@@ -178,6 +178,10 @@ def sprite_paths() -> dict[str, str]:
             paths[f'platformer/{name}'] = f'{ASSETS}platformer/{name}.png'
     for name in ('enemySwimming_1', 'enemySwimming_2', 'yellowCrystal'):
         paths[f'platformer/{name}'] = f'{ASSETS}platformer/{name}.png'
+    # miner: the digging robot, a boulder, a diamond, the exit window, the dirt tile
+    # and the out-of-bounds brick.
+    for name in ('robot_greenDrive1', 'elementStone007', 'gemBlue', 'window', 'dirt', 'tile_bricksGrey'):
+        paths[f'misc/miner/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 
