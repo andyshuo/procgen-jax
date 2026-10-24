@@ -59,6 +59,13 @@ def sprite_paths() -> dict[str, str]:
     # their own absolute URL (bigfish.cpp's asset_for_type).
     for tile in ('072', '074', '078', '080'):
         paths[f'misc/fish{tile}'] = f'{ASSETS}misc_assets/fishTile_{tile}.png'
+    # leaper: the frogger board and its traffic (leaper.cpp's asset_for_type).
+    for name in ('roadTile6b', 'terrainTile6', 'elementWood044', 'finish2'):
+        paths[f'misc/leaper/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    for name in ('car_yellow_5', 'car_black_1', 'car_blue_2', 'car_green_3', 'car_red_4'):
+        paths[f'misc/leaper/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    for name in ('frog1', 'frog2', 'frog4', 'frog6', 'frog7'):
+        paths[f'misc/leaper/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 

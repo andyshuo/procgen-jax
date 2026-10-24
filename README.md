@@ -15,8 +15,9 @@ synchronisation per step, and `jax.vmap` turnaround for free.
 | `maze`     | ✅            | Kruskal mazes, grid movement, goal reward                   |
 | `coinrun`  | ✅            | platformer physics, hazards, coin; levels match the C++ 1:1  |
 | `bigfish`  | ✅            | swimming arena, eat smaller fish, grow, 30-fish quota        |
+| `leaper`   | ✅            | frogger board: hop one tile, dodge cars, ride logs           |
 
-The remaining 13 games are planned; see the roadmap below. Each game in the
+The remaining 12 games are planned; see the roadmap below. Each game in the
 original is only 121-523 lines of logic on top of a shared engine, so the
 incremental cost per game is small now that `procgen_jax/engine.py` exists.
 
@@ -260,7 +261,7 @@ These are deliberate first-milestone choices, not bugs:
 
 - [x] `coinrun` -- platformer physics, so the engine has a second consumer.
 - [x] Shared engine primitives (`Entity`, `is_blocked`, sub-stepped collisions).
-- [ ] Port the remaining 13 games (next: `heist`, `plunder`, `leaper`).
+- [ ] Port the remaining 12 games (next: `plunder`, `jumper`, `heist`).
 - [x] Sprite-based rendering (`pixi run atlas`).
 - [x] Level-parity harness against the C++ implementation (`pixi run reference`).
 - [ ] PPO baseline + throughput comparison against the original.
