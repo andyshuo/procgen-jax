@@ -32,6 +32,7 @@ from procgen_jax import (
     JumperEnv,
     LeaperEnv,
     MazeEnv,
+    NinjaEnv,
     PlunderEnv,
     StarPilotEnv,
 )
@@ -138,6 +139,8 @@ class Session:
             env = ChaserEnv(level_seed=self.seed)
         elif self.game == 'caveflyer':
             env = CaveFlyerEnv(level_seed=self.seed)
+        elif self.game == 'ninja':
+            env = NinjaEnv(level_seed=self.seed)
         else:
             env = CoinRunEnv(level_seed=self.seed)
         self.step = jax.jit(env.step)
@@ -221,6 +224,7 @@ def main() -> None:
             'jumper',
             'chaser',
             'caveflyer',
+            'ninja',
         ],
     )
     parser.add_argument('--seed', type=int, default=None)

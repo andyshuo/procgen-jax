@@ -24,8 +24,9 @@ synchronisation per step, and `jax.vmap` turnaround for free.
 | `jumper`   | ✅            | cave maze: double jump, spikes, and a carrot at the end      |
 | `chaser`   | ✅            | maze full of orbs, crystals that make the ghosts edible      |
 | `caveflyer`| ✅            | lunar lander in a cave: turn, thrust, shoot the red saucers  |
+| `ninja`    | ✅            | platformer: charged jumps, fire floors, throwing stars        |
 
-The remaining 4 games are planned; see the roadmap below. Each game in the
+The remaining 3 games are planned; see the roadmap below. Each game in the
 original is only 121-523 lines of logic on top of a shared engine, so the
 incremental cost per game is small now that `procgen_jax/engine.py` exists.
 
@@ -269,7 +270,7 @@ These are deliberate first-milestone choices, not bugs:
 
 - [x] `coinrun` -- platformer physics, so the engine has a second consumer.
 - [x] Shared engine primitives (`Entity`, `is_blocked`, sub-stepped collisions).
-- [ ] Port the remaining 4 games (next: `ninja`, `climber`, `miner`).
+- [ ] Port the remaining 3 games (next: `climber`, `miner`, `bossfight`).
 - [x] Sprite-based rendering (`pixi run atlas`).
 - [x] Level-parity harness against the C++ implementation (`pixi run reference`).
 - [ ] PPO baseline + throughput comparison against the original.

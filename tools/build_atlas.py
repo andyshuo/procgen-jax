@@ -153,6 +153,23 @@ def sprite_paths() -> dict[str, str]:
         'towerDefense_tile295',
     ):
         paths[f'misc/caveflyer/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # ninja: three brick themes, six mushrooms, the zombie's four frames, a bomb and
+    # the throwing star.
+    for name in ('tile_bricksGrey', 'tile_bricksGrown', 'tile_bricksRed', 'bomb', 'saw'):
+        paths[f'misc/ninja/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    for name in [
+        'shroom1',
+        'shroom2',
+        'shroom3',
+        'shroom4',
+        'shroom5',
+        'shroom6',
+        'zombie_idle',
+        'zombie_jump',
+        'zombie_walk1',
+        'zombie_walk2',
+    ]:
+        paths[f'misc/ninja/{name}'] = f'{ASSETS}platformer/{name}.png'
     return paths
 
 
