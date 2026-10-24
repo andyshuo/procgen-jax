@@ -29,6 +29,8 @@ from procgen_jax.objects import PROCGEN_KEY as KEY_OBJ
 from procgen_jax.objects import PROCGEN_SPACE as SPACE
 
 MAZE_OFFSET = 1
+#: ``heist`` asks for at most three doors, so the loops stop there.
+MAX_DOORS = 3
 #: ``object-ids.h``: ``INVALID_OBJ``, returned for lookups outside the grid.
 INVALID_OBJ = -1
 
@@ -225,78 +227,88 @@ def _expand_to_type(flat, array_dim, s0, s1, kind):
     return found, s1
 
 
-def generate_maze_with_doors(state: rng.Mt19937, maze_dim: int, num_doors: int):
+def generate_maze_with_doors(state: rng.Mt19937, maze_dim: int, num_doors):
     """``generate_maze_with_doors``: forks become doors, then keys and an exit.
 
-    Returns ``(state, grid)``. Doors are numbered ``DOOR_OBJ + 1 ...``, keys
-    ``KEY_OBJ + 1 ...`` and the exit is ``EXIT_OBJ``; the agent cell is
-    ``AGENT_OBJ``.
+    ``num_doors`` may be traced: every loop runs to a static bound and masks itself,
+    so the whole generator is traceable inside ``jit``/``lax.cond``.
     """
     array_dim = maze_dim + 2
     size = array_dim * array_dim
     state, grid = generate_maze(state, maze_dim)
     flat = grid.reshape(size)
     values, nbr, valid, positions = _neighbour_tables(flat, array_dim)
+    big = size + 1
 
     # ---- forks become doors ------------------------------------------------- #
     space_neighbours = ((values == SPACE) & valid).sum(axis=1)
     forks = (flat == SPACE) & (space_neighbours > 2)
-    fork_list = jnp.sort(jnp.where(forks, positions, size + 1))[: int(forks.sum())]
-    picks = min(num_doors, int(forks.sum()))
+    fork_count = forks.sum()
+    picks = jnp.minimum(num_doors, fork_count)
 
+    remaining = jnp.sort(jnp.where(forks, positions, big))
+    available = fork_count
     chosen = jnp.zeros((size,), bool)
-    remaining = fork_list
-    for _ in range(picks):
-        state, index = rng.randn(state, remaining.shape[0])
-        chosen = chosen.at[remaining[index]].set(True)
-        shifted = jnp.concatenate([remaining[1:], jnp.full((1,), size + 1, jnp.int32)])
-        keep = jnp.arange(remaining.shape[0]) < index
-        remaining = jnp.where(keep, remaining, shifted)[: remaining.shape[0] - 1]
+    for step in range(MAX_DOORS):
+        active = step < picks
+        state, index = jax.lax.cond(
+            active,
+            lambda st, high=available: rng.randn(st, high),
+            lambda st: (st, jnp.zeros((), jnp.int32)),
+            state,
+        )
+        index = jnp.clip(index, 0, size - 1)
+        picked = remaining[index]
+        chosen = chosen.at[picked].set(chosen[picked] | active)
+        shifted = jnp.concatenate([remaining[1:], jnp.full((1,), big, jnp.int32)])
+        keep = positions < index
+        remaining = jnp.where(active & keep, remaining, jnp.where(active, shifted, remaining))
+        available = available - active.astype(jnp.int32)
     flat = jnp.where(chosen, DOOR_OBJ, flat)
 
     # ---- a start cell that is not next to a door ---------------------------- #
     def next_to_door(cell):
         return ((flat[nbr[cell]] == DOOR_OBJ) & valid[cell]).any()
 
-    space_list = jnp.sort(jnp.where(flat == SPACE, positions, size + 1))[: int((flat == SPACE).sum())]
+    space_count = (flat == SPACE).sum()
+    space_list = jnp.sort(jnp.where(flat == SPACE, positions, big))
 
     def pick_agent(_, carry):
         state, agent, done = carry
         state, index = jax.lax.cond(
             done,
             lambda st: (st, jnp.zeros((), jnp.int32)),
-            lambda st: rng.randn(st, space_list.shape[0]),
+            lambda st, high=space_count: rng.randn(st, high),
             state,
         )
-        candidate = space_list[jnp.clip(index, 0, space_list.shape[0] - 1)]
+        candidate = space_list[jnp.clip(index, 0, size - 1)]
         fresh = ~done & ~next_to_door(candidate)
         return state, jnp.where(fresh, candidate, agent), done | fresh
 
-    agent_cell = jnp.asarray(0, jnp.int32)
     state, agent_cell, _ = jax.lax.fori_loop(
-        0,
-        size,
-        pick_agent,
-        (state, agent_cell, jnp.asarray(False)),
+        0, size, pick_agent, (state, jnp.asarray(big, jnp.int32), jnp.asarray(False))
     )
     flat = flat.at[agent_cell].set(AGENT_OBJ)
 
     # ---- keys and the exit --------------------------------------------------- #
     s0 = jnp.zeros((size,), bool).at[agent_cell].set(True)
-    for door_num in range(picks + 1):
-        # ``std::set<int> s1;`` is declared inside the loop in the C++, so each
-        # round starts from an empty reachable set even though ``s0`` accumulates.
+    for door_num in range(MAX_DOORS + 1):
+        # ``std::set<int> s1;`` is declared inside the C++ loop: each round starts
+        # from an empty reachable set even though ``s0`` accumulates.
         s1 = jnp.zeros((size,), bool)
-        found_door = jnp.asarray(-1, jnp.int32)
-        if door_num < picks:
-            found_door, s1 = _expand_to_type(flat, array_dim, s0, s1, DOOR_OBJ)
-            flat = flat.at[found_door].set(DOOR_OBJ + door_num + 1)
-            s0 = s0 | s1
+        active = door_num < picks
+        found_door, s1 = _expand_to_type(flat, array_dim, s0, s1, DOOR_OBJ)
+        numbered = jnp.where(active, DOOR_OBJ + door_num + 1, DOOR_OBJ)
+        flat = flat.at[jnp.clip(found_door, 0, size - 1)].set(
+            jnp.where(active & (found_door >= 0), numbered, flat[jnp.clip(found_door, 0, size - 1)])
+        )
+        s0 = s0 | s1
 
         _, s1 = _expand_to_type(flat, array_dim, s0, s1, -999)
-        cells = jnp.sort(jnp.where(s1, positions, size + 1))[: int(s1.sum())]
-        state, index = rng.randn(state, cells.shape[0])
-        key_cell = cells[index]
-        flat = flat.at[key_cell].set(EXIT_OBJ if door_num == picks else KEY_OBJ + door_num + 1)
+        cells = jnp.sort(jnp.where(s1, positions, big))
+        state, index = rng.randn(state, jnp.maximum(s1.sum(), 1))
+        key_cell = cells[jnp.clip(index, 0, size - 1)]
+        stamp = jnp.where(door_num == picks, EXIT_OBJ, KEY_OBJ + door_num + 1)
+        flat = flat.at[key_cell].set(stamp)
         s0 = s0 | s1 | (positions == found_door)
     return state, flat.reshape(array_dim, array_dim)

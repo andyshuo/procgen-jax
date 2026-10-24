@@ -71,6 +71,18 @@ def sprite_paths() -> dict[str, str]:
         paths[f'misc/plunder/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     for name in ('cannonBall', 'panel_wood', 'target_red2'):
         paths[f'misc/plunder/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # heist: locks, keys, the gem and the astronaut (heist.cpp's asset_for_type).
+    for name in (
+        'gemYellow',
+        'spaceAstronauts_008',
+        'keyBlue',
+        'keyGreen',
+        'keyRed',
+        'lock_blue',
+        'lock_green',
+        'lock_red',
+    ):
+        paths[f'misc/heist/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 

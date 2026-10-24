@@ -8,6 +8,7 @@ bookkeeping or a draw was transcribed wrongly.
 
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -146,3 +147,14 @@ def test_the_agent_never_starts_next_to_a_door():
     door_neighbours = ((jnp.asarray(flat)[nbr[agent]] == mazegen.DOOR_OBJ) & valid[agent]).any()
 
     assert not bool(door_neighbours)
+
+
+def test_the_generator_is_traceable():
+    """heist calls it from inside ``lax.cond``, so it must survive jit."""
+    traced = jax.jit(mazegen.generate_maze_with_doors, static_argnums=(1,))
+    state = rng.seed(jnp.asarray(3, jnp.uint32))
+
+    state, grid = traced(state, 13, jnp.asarray(2, jnp.int32))
+
+    assert grid.shape == (15, 15)
+    assert int((grid == mazegen.DOOR_OBJ + 1).sum()) == 1
