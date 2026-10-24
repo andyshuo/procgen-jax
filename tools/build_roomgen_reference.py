@@ -127,6 +127,7 @@ def main() -> None:
         ca=np.stack([case['ca'] for case in cases]),
         best=np.stack([case['best'] for case in cases]),
         expanded=np.stack([case['expanded'] for case in cases]),
+        grown=np.stack([case['grown'] for case in cases]),
         paths=paths,
         path_lengths=np.asarray([len(case['path']) for case in cases], np.int64),
     )

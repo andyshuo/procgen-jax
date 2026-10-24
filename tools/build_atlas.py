@@ -112,6 +112,21 @@ def sprite_paths() -> dict[str, str]:
     )
     for name in fruitbot:
         paths[f'misc/fruitbot/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # jumper: the bunny frames, the spiky thing and the carrot, plus the four
+    # platformer tiles used for the cave walls and their tops.
+    for name in ('bunny2_ready', 'bunny2_jump', 'bunny2_walk1', 'bunny2_walk2', 'spikeMan_stand', 'carrot'):
+        paths[f'misc/jumper/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    for name in (
+        'tileBlue_05',
+        'tileGreen_05',
+        'tileYellow_06',
+        'tileBrown_06',
+        'tileBlue_08',
+        'tileGreen_08',
+        'tileYellow_09',
+        'tileBrown_09',
+    ):
+        paths[f'platformer/{name}'] = f'{ASSETS}platformer/{name}.png'
     return paths
 
 

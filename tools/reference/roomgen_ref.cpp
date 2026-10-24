@@ -15,6 +15,11 @@
 
 namespace {
 
+int src_of(const std::set<int> &cells) {
+    for (int cell : cells) return cell;
+    return 0;
+}
+
 const int DIM = 40;
 const int MAZE_SCALE = 3;
 
@@ -62,6 +67,13 @@ void run(int seed) {
     std::set<int> room = best;
     roomgen.expand_room(room, 3);
     print_set("expanded", room);
+
+    // The best room is often the whole open area, so the call above cannot grow at
+    // all; start from one cell as well, which does exercise the growth.
+    std::set<int> seed_room;
+    seed_room.insert(src_of(best));
+    roomgen.expand_room(seed_room, 2);
+    print_set("grown", seed_room);
 
     int src = -1;
     for (int cell : best) {

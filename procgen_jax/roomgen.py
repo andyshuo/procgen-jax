@@ -145,8 +145,7 @@ def expand_room(flat: jax.Array, dim: int, room: jax.Array, rounds: int) -> jax.
     current = room
 
     for _ in range(rounds):
-        fresh = (jnp.take(is_space, nbr, axis=0, mode='clip') & valid & current[:, None]).any(axis=1)
-        fresh = fresh & ~room
+        fresh = _spread(current, is_space, nbr, valid, size) & ~room
         room = room | fresh
         current = fresh
     return room

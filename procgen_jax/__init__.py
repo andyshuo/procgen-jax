@@ -10,6 +10,7 @@ from procgen_jax.games.coinrun import CoinRunEnv
 from procgen_jax.games.dodgeball import DodgeballEnv
 from procgen_jax.games.fruitbot import FruitBotEnv
 from procgen_jax.games.heist import HeistEnv
+from procgen_jax.games.jumper import JumperEnv
 from procgen_jax.games.leaper import LeaperEnv
 from procgen_jax.games.maze import MazeEnv
 from procgen_jax.games.plunder import PlunderEnv
@@ -23,6 +24,7 @@ __all__ = [
     'Env',
     'FruitBotEnv',
     'HeistEnv',
+    'JumperEnv',
     'LeaperEnv',
     'MazeEnv',
     'PlunderEnv',

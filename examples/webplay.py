@@ -27,6 +27,7 @@ from procgen_jax import (
     DodgeballEnv,
     FruitBotEnv,
     HeistEnv,
+    JumperEnv,
     LeaperEnv,
     MazeEnv,
     PlunderEnv,
@@ -129,6 +130,8 @@ class Session:
             env = DodgeballEnv(level_seed=self.seed)
         elif self.game == 'fruitbot':
             env = FruitBotEnv(level_seed=self.seed)
+        elif self.game == 'jumper':
+            env = JumperEnv(level_seed=self.seed)
         else:
             env = CoinRunEnv(level_seed=self.seed)
         self.step = jax.jit(env.step)
@@ -199,7 +202,18 @@ def main() -> None:
     parser.add_argument(
         '--game',
         default='coinrun',
-        choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball', 'fruitbot'],
+        choices=[
+            'coinrun',
+            'maze',
+            'bigfish',
+            'leaper',
+            'plunder',
+            'heist',
+            'starpilot',
+            'dodgeball',
+            'fruitbot',
+            'jumper',
+        ],
     )
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--port', type=int, default=8010)

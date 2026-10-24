@@ -55,6 +55,18 @@ def test_expanding_the_room_matches(reference):
         assert np.array_equal(np.asarray(grown), reference['expanded'][index].reshape(-1))
 
 
+def test_growing_from_one_cell_matches(reference):
+    """The path expansion is the one that actually has room to grow."""
+    for index in range(len(reference['seeds'])):
+        flat = jnp.asarray(reference['ca'][index].reshape(-1), jnp.int32)
+        seed_room = jnp.zeros((40 * 40,), bool)
+        seed_room = seed_room.at[int(np.flatnonzero(reference['best'][index].reshape(-1))[0])].set(True)
+
+        grown = roomgen.expand_room(flat, 40, seed_room, 2)
+
+        assert np.array_equal(np.asarray(grown), reference['grown'][index].reshape(-1))
+
+
 def test_the_path_matches(reference):
     for index in range(len(reference['seeds'])):
         flat = jnp.asarray(reference['ca'][index].reshape(-1), jnp.int32)
