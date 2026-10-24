@@ -127,6 +127,19 @@ def sprite_paths() -> dict[str, str]:
         'tileBrown_09',
     ):
         paths[f'platformer/{name}'] = f'{ASSETS}platformer/{name}.png'
+    # chaser: the floating eye, the flying enemies, the crystal orb, the walking
+    # weak form, the egg and the maze wall tile.
+    for name in (
+        'enemyFloating_1b',
+        'enemyFlying_1',
+        'enemyFlying_2',
+        'enemyFlying_3',
+        'yellowCrystal',
+        'enemyWalking_1b',
+        'enemySpikey_1b',
+        'tileStone_slope',
+    ):
+        paths[f'misc/chaser/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 
@@ -179,12 +192,26 @@ def decode(path: Path, size: int = SIZE) -> np.ndarray:
     return np.frombuffer(out, np.uint8).reshape(size, size, 4).copy()
 
 
+#: A few tiles are drawn as flat shapes rather than sprites. ``chaser`` paints an orb
+#: as a green rectangle covering 30% of its tile, so the atlas gets a copy of that.
+SYNTHETIC = {'misc/chaser/orb': (0, 255, 0, 255)}
+
+
+def synthetic(name: str) -> np.ndarray:
+    """A 32x32 sprite with a 30% colour square in the middle and clear around it."""
+    sprite = np.zeros((SIZE, SIZE, 4), np.uint8)
+    low = int(SIZE * 0.35)
+    high = SIZE - low
+    sprite[low:high, low:high] = np.asarray(SYNTHETIC[name], np.uint8)
+    return sprite
+
+
 def main() -> None:
     paths = sprite_paths()
     cache = Path('.atlas_cache')
     cache.mkdir(exist_ok=True)
 
-    names = ['_transparent', *paths]
+    names = ['_transparent', *paths, *SYNTHETIC]
     atlas = np.zeros((len(names), SIZE, SIZE, 4), np.uint8)
     aspects = np.ones(len(names), np.float32)
 
@@ -196,6 +223,9 @@ def main() -> None:
         atlas[row] = decode(png)
         width, height = image_size(png)
         aspects[row] = width / height
+
+    for offset, name in enumerate(SYNTHETIC, start=len(paths) + 1):
+        atlas[offset] = synthetic(name)
 
     out = Path('procgen_jax/data')
     out.mkdir(exist_ok=True)

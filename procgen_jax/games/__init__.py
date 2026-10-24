@@ -1,6 +1,7 @@
 """ProcGen games, one module each."""
 
 from procgen_jax.games.bigfish import BigFishEnv
+from procgen_jax.games.chaser import ChaserEnv
 from procgen_jax.games.coinrun import CoinRunEnv
 from procgen_jax.games.dodgeball import DodgeballEnv
 from procgen_jax.games.fruitbot import FruitBotEnv
@@ -13,6 +14,7 @@ from procgen_jax.games.starpilot import StarPilotEnv
 
 __all__ = [
     'BigFishEnv',
+    'ChaserEnv',
     'CoinRunEnv',
     'DodgeballEnv',
     'FruitBotEnv',
