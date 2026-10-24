@@ -8,6 +8,7 @@ from procgen_jax.base import Env, State, Wrapper, auto_reset
 from procgen_jax.games.bigfish import BigFishEnv
 from procgen_jax.games.caveflyer import CaveFlyerEnv
 from procgen_jax.games.chaser import ChaserEnv
+from procgen_jax.games.climber import ClimberEnv
 from procgen_jax.games.coinrun import CoinRunEnv
 from procgen_jax.games.dodgeball import DodgeballEnv
 from procgen_jax.games.fruitbot import FruitBotEnv
@@ -24,6 +25,7 @@ __all__ = [
     'BigFishEnv',
     'CaveFlyerEnv',
     'ChaserEnv',
+    'ClimberEnv',
     'CoinRunEnv',
     'DodgeballEnv',
     'Env',

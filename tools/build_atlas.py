@@ -170,6 +170,14 @@ def sprite_paths() -> dict[str, str]:
         'zombie_walk2',
     ]:
         paths[f'misc/ninja/{name}'] = f'{ASSETS}platformer/{name}.png'
+    # climber: a coloured player in four poses, the swimming enemy in two frames and
+    # the crystal it collects (the wall tiles are shared with jumper).
+    for colour in ('Blue', 'Green', 'Grey', 'Red'):
+        for frame in ('stand', 'walk1', 'walk2', 'walk4'):
+            name = f'player{colour}_{frame}'
+            paths[f'platformer/{name}'] = f'{ASSETS}platformer/{name}.png'
+    for name in ('enemySwimming_1', 'enemySwimming_2', 'yellowCrystal'):
+        paths[f'platformer/{name}'] = f'{ASSETS}platformer/{name}.png'
     return paths
 
 
