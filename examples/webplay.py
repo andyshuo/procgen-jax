@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from procgen_jax import BigFishEnv, CoinRunEnv, LeaperEnv, MazeEnv, PlunderEnv
+from procgen_jax import BigFishEnv, CoinRunEnv, HeistEnv, LeaperEnv, MazeEnv, PlunderEnv
 
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>procgen-jax</title>
@@ -111,6 +111,8 @@ class Session:
             env = LeaperEnv(level_seed=self.seed)
         elif self.game == 'plunder':
             env = PlunderEnv(level_seed=self.seed)
+        elif self.game == 'heist':
+            env = HeistEnv(level_seed=self.seed)
         else:
             env = CoinRunEnv(level_seed=self.seed)
         self.step = jax.jit(env.step)
@@ -178,7 +180,9 @@ def make_handler(session: Session):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--game', default='coinrun', choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder'])
+    parser.add_argument(
+        '--game', default='coinrun', choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist']
+    )
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--port', type=int, default=8010)
     parser.add_argument('--host', default='127.0.0.1')

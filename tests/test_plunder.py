@@ -32,7 +32,8 @@ from procgen_jax.games.plunder import (
 )
 from procgen_jax.objects import SPACE
 
-UP, LEFT, DOWN, NOOP, RIGHT = 5, 1, 3, 4, 7
+# set_action_xy: vx = act // 3 - 1, vy = act % 3 - 1, so 3 is up and 5 is down.
+UP, LEFT, DOWN, NOOP, RIGHT = 3, 1, 5, 4, 7
 JIT_ENV = PlunderEnv()
 jit_step = jax.jit(JIT_ENV.step)
 
