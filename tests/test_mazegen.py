@@ -18,10 +18,11 @@ from procgen_jax.objects import PROCGEN_SPACE as SPACE
 
 FIXTURE = Path(__file__).parent / 'data' / 'maze_reference.npz'
 
-#: Every mode this port implements so far (``with_doors`` is still to come).
+#: Every mode of the original generator.
 MODES = {
     'maze': mazegen.generate_maze,
     'no_dead_ends': mazegen.generate_maze_no_dead_ends,
+    'with_doors': mazegen.generate_maze_with_doors,
 }
 
 
@@ -32,9 +33,12 @@ def reference():
     return np.load(FIXTURE)
 
 
-def build(mode: str, seed: int, maze_dim: int):
+def build(mode: str, seed: int, maze_dim: int, doors: int = 0):
     state = rng.seed(jnp.asarray(seed, jnp.uint32))
-    state, grid = MODES[mode](state, maze_dim)
+    if mode == 'with_doors':
+        state, grid = MODES[mode](state, maze_dim, doors)
+    else:
+        state, grid = MODES[mode](state, maze_dim)
     return np.asarray(grid)
 
 
@@ -48,12 +52,13 @@ def test_every_generated_maze_matches_the_reference(reference):
         maze_dim = int(reference['dims'][index])
         expected = reference['grids'][index][: maze_dim + 2, : maze_dim + 2]
 
-        grid = build(mode, seed, maze_dim)
+        doors = int(reference['doors'][index])
+        grid = build(mode, seed, maze_dim, doors)
 
         assert np.array_equal(grid, expected), f'{mode} seed {seed} dim {maze_dim} diverges'
         checked += 1
 
-    assert checked >= 20, 'the fixture should cover both modes and both sizes'
+    assert checked == 35, 'the fixture covers three modes, two sizes and five seeds'
 
 
 def test_the_grid_only_holds_walls_and_space(reference):
@@ -117,3 +122,27 @@ def test_wall_list_matches_the_original_layout():
     assert walls[0] == (0, 0, 2, 0)
     assert walls[4] == (0, 8, 2, 8), 'first row of the second wall column'
     assert walls[20] == (0, 0, 0, 2), 'the vertical walls start after the horizontal ones'
+
+
+def test_doors_come_with_matching_keys():
+    """Door ``n`` is ``DOOR_OBJ + n`` and its key is ``KEY_OBJ + n``, plus one exit."""
+    grid = build('with_doors', 42, 13, 3)
+    values = set(np.unique(grid).tolist())
+
+    doors = sorted(v for v in values if v >= mazegen.DOOR_OBJ and v < mazegen.DOOR_OBJ + 10)
+    keys = sorted(v for v in values if v >= mazegen.KEY_OBJ)
+    assert doors == [mazegen.DOOR_OBJ + index for index in range(1, len(doors) + 1)]
+    assert keys == [mazegen.KEY_OBJ + index for index in range(1, len(keys) + 1)]
+    assert len(keys) == len(doors), 'every door needs its own key'
+    assert values & {mazegen.EXIT_OBJ, mazegen.AGENT_OBJ}
+
+
+def test_the_agent_never_starts_next_to_a_door():
+    values, nbr, valid, positions = mazegen._neighbour_tables(
+        jnp.asarray(build('with_doors', 7, 13, 2), jnp.int32).reshape(-1), 15
+    )
+    flat = jnp.asarray(build('with_doors', 7, 13, 2), jnp.int32).reshape(-1)
+    agent = int(np.argmax(np.asarray(flat) == mazegen.AGENT_OBJ))
+    door_neighbours = ((jnp.asarray(flat)[nbr[agent]] == mazegen.DOOR_OBJ) & valid[agent]).any()
+
+    assert not bool(door_neighbours)
