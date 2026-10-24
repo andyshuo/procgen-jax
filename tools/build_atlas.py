@@ -66,6 +66,11 @@ def sprite_paths() -> dict[str, str]:
         paths[f'misc/leaper/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     for name in ('frog1', 'frog2', 'frog4', 'frog6', 'frog7'):
         paths[f'misc/leaper/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # plunder: ships, cannonballs, crates and the target legend.
+    for name in ('ship_1', 'ship_2', 'ship_3', 'ship_4', 'ship_5', 'ship_6'):
+        paths[f'misc/plunder/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    for name in ('cannonBall', 'panel_wood', 'target_red2'):
+        paths[f'misc/plunder/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 

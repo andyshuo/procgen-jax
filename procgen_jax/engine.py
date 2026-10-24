@@ -48,6 +48,9 @@ class Entity(NamedTuple):
     image_type: jax.Array
     image_theme: jax.Array
     is_reflected: jax.Array
+    life_time: jax.Array
+    expire_time: jax.Array
+    collides_with_entities: jax.Array
     render_z: jax.Array
     smart_step: jax.Array
     active: jax.Array
@@ -64,6 +67,9 @@ def entity(
     image_type=None,
     image_theme=0,
     is_reflected=False,
+    life_time=0,
+    expire_time=0,
+    collides_with_entities=False,
     render_z=0,
     smart_step=False,
     active=True,
@@ -80,6 +86,9 @@ def entity(
         image_type=jnp.asarray(type if image_type is None else image_type, dtype=jnp.int32),
         image_theme=jnp.asarray(image_theme, dtype=jnp.int32),
         is_reflected=jnp.asarray(is_reflected),
+        life_time=jnp.asarray(life_time, dtype=jnp.int32),
+        expire_time=jnp.asarray(expire_time, dtype=jnp.int32),
+        collides_with_entities=jnp.asarray(collides_with_entities),
         render_z=jnp.asarray(render_z, dtype=jnp.int32),
         smart_step=jnp.asarray(smart_step),
         active=jnp.asarray(active),
@@ -269,6 +278,22 @@ def step_object(
 
     moved = moved._replace(vx=moved.vx * (vx_pct / count), vy=moved.vy * (vy_pct / count))
     return moved, support
+
+
+def entity_step(ent: Entity) -> Entity:
+    """``Entity::step``: move free bodies, age them, and expire projectiles.
+
+    Bodies with ``smart_step`` have already been moved by :func:`step_object`, so
+    only the ageing applies to them -- exactly like the C++.
+    """
+    free = ~ent.smart_step
+    moved = ent._replace(
+        x=jnp.where(free, ent.x + ent.vx, ent.x),
+        y=jnp.where(free, ent.y + ent.vy, ent.y),
+        life_time=ent.life_time + 1,
+    )
+    expired = (moved.expire_time > 0) & (moved.life_time > moved.expire_time)
+    return moved._replace(active=moved.active & ~expired)
 
 
 def collides(a: Entity, b: Entity, margin=0.0) -> jax.Array:
