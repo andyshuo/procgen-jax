@@ -6,6 +6,7 @@ observation, so a whole vectorised rollout compiles into one ``lax.scan``.
 
 from procgen_jax.base import Env, State, Wrapper, auto_reset
 from procgen_jax.games.bigfish import BigFishEnv
+from procgen_jax.games.bossfight import BossfightEnv
 from procgen_jax.games.caveflyer import CaveFlyerEnv
 from procgen_jax.games.chaser import ChaserEnv
 from procgen_jax.games.climber import ClimberEnv
@@ -25,6 +26,7 @@ from procgen_jax.version import __version__
 __all__ = [
     'BigFishEnv',
     'CaveFlyerEnv',
+    'BossfightEnv',
     'ChaserEnv',
     'ClimberEnv',
     'CoinRunEnv',

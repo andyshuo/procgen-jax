@@ -182,6 +182,22 @@ def sprite_paths() -> dict[str, str]:
     # and the out-of-bounds brick.
     for name in ('robot_greenDrive1', 'elementStone007', 'gemBlue', 'window', 'dirt', 'tile_bricksGrey'):
         paths[f'misc/miner/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # bossfight: four player ships, four bosses, the three laser colours and the shield.
+    for name in (
+        'playerShip1_blue',
+        'playerShip1_green',
+        'playerShip2_orange',
+        'playerShip3_red',
+        'enemyShipBlack1',
+        'enemyShipBlue2',
+        'enemyShipGreen3',
+        'enemyShipRed4',
+        'laserGreen14',
+        'laserRed11',
+        'laserBlue09',
+        'shield2',
+    ):
+        paths[f'misc/bossfight/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 

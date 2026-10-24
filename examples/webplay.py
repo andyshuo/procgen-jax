@@ -23,6 +23,7 @@ import numpy as np
 
 from procgen_jax import (
     BigFishEnv,
+    BossfightEnv,
     CaveFlyerEnv,
     ChaserEnv,
     ClimberEnv,
@@ -147,6 +148,8 @@ class Session:
             env = ClimberEnv(level_seed=self.seed)
         elif self.game == 'miner':
             env = MinerEnv(level_seed=self.seed)
+        elif self.game == 'bossfight':
+            env = BossfightEnv(level_seed=self.seed)
         else:
             env = CoinRunEnv(level_seed=self.seed)
         self.step = jax.jit(env.step)
@@ -233,6 +236,7 @@ def main() -> None:
             'ninja',
             'climber',
             'miner',
+            'bossfight',
         ],
     )
     parser.add_argument('--seed', type=int, default=None)

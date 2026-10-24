@@ -31,6 +31,7 @@ import numpy as np
 
 from procgen_jax import (
     BigFishEnv,
+    BossfightEnv,
     CaveFlyerEnv,
     ChaserEnv,
     ClimberEnv,
@@ -164,6 +165,8 @@ def build(game: str, seed):
         env = ClimberEnv(level_seed=seed)
     elif game == 'miner':
         env = MinerEnv(level_seed=seed)
+    elif game == 'bossfight':
+        env = BossfightEnv(level_seed=seed)
     else:
         env = CoinRunEnv(level_seed=seed)
     return env
@@ -190,6 +193,7 @@ def main() -> int:
             'ninja',
             'climber',
             'miner',
+            'bossfight',
         ],
     )
     parser.add_argument('--seed', type=int, default=None, help='pin the level seed')
