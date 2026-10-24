@@ -1,0 +1,171 @@
+"""ProcGen's maze generator, transcribed from ``procgen/src/mazegen.cpp``.
+
+``MazeGen`` builds a rectangular maze on a ``(maze_dim + 2)`` grid (a one-cell
+border of walls) with Kruskal's algorithm, then optionally punches extra openings.
+It has its own quirks that matter for parity:
+
+* walls are not shuffled; the C++ removes a *random element of a shrinking
+  vector*, so the draw is ``randn(remaining)`` and the order of the rest is kept;
+* the union-find only ever compares representatives, so a plain parent array
+  reproduces the same decisions;
+* the first cell is written as ``0`` rather than ``SPACE``.
+
+The generator consumes an :class:`~procgen_jax.rng.Mt19937` state, so the grids
+are identical to the original for the same seed and parameters.
+"""
+
+import jax
+import jax.numpy as jnp
+
+from procgen_jax import rng
+from procgen_jax.engine import WALL_OBJ
+
+#: ``MazeGen`` works in ProcGen's own id space, where empty cells are 100
+#: (this repo's tile grid uses 0, which is why the constant is imported explicitly).
+from procgen_jax.objects import PROCGEN_SPACE as SPACE
+
+MAZE_OFFSET = 1
+#: ``object-ids.h``: ``INVALID_OBJ``, returned for lookups outside the grid.
+INVALID_OBJ = -1
+
+
+def wall_list(maze_dim: int):
+    """``MazeGen``'s wall list, in the order the original builds it.
+
+    Each entry is ``(x1, y1, x2, y2)``: the two cells a wall separates.
+    """
+    walls = []
+    for i in range(1, maze_dim, 2):
+        for j in range(0, maze_dim, 2):
+            if 0 < i < maze_dim - 1:
+                walls.append((i - 1, j, i + 1, j))
+    for i in range(0, maze_dim, 2):
+        for j in range(1, maze_dim, 2):
+            if 0 < j < maze_dim - 1:
+                walls.append((i, j - 1, i, j + 1))
+    return walls
+
+
+def _find(parents, node):
+    """Root of ``node`` (the C++ looks up per-set index maps; only equality is used)."""
+    return jax.lax.while_loop(lambda n: parents[n] != n, lambda n: parents[n], node)
+
+
+def _neighbours(index, array_dim):
+    """``get_neighbors`` order: left, down, up, right, as ``(indices, valid)``."""
+    x = index % array_dim
+    y = index // array_dim
+    offsets = jnp.asarray([-1, -array_dim, array_dim, 1], jnp.int32)
+    nbr = index + offsets
+    # ``get_obj`` rejects the whole one-cell border (``x <= 0`` or ``x >= array_dim - 1``),
+    # so a neighbour only counts if it lands strictly inside it.
+    valid = jnp.asarray([x > MAZE_OFFSET, y > MAZE_OFFSET, y < array_dim - 2, x < array_dim - 2])
+    return nbr, valid
+
+
+def generate_maze(state: rng.Mt19937, maze_dim: int):
+    """Kruskal's algorithm. Returns ``(state, grid)`` with the maze at +1 offset."""
+    array_dim = maze_dim + 2
+    size = array_dim * array_dim
+    walls = wall_list(maze_dim)
+    total = len(walls)
+
+    wall_x1 = jnp.asarray([w[0] for w in walls], jnp.int32)
+    wall_y1 = jnp.asarray([w[1] for w in walls], jnp.int32)
+    wall_x2 = jnp.asarray([w[2] for w in walls], jnp.int32)
+    wall_y2 = jnp.asarray([w[3] for w in walls], jnp.int32)
+
+    grid = jnp.full((size,), WALL_OBJ, jnp.int32)
+    grid = grid.at[MAZE_OFFSET * array_dim + MAZE_OFFSET].set(0)
+    parents = jnp.arange(maze_dim * maze_dim, dtype=jnp.int32)
+    remaining = jnp.asarray(total, jnp.int32)
+    positions = jnp.arange(total)
+
+    def carve(grid, parents, state, count, wall_x1, wall_y1, wall_x2, wall_y2):
+        state, pick = rng.randn(state, count)
+        x1, y1 = wall_x1[pick], wall_y1[pick]
+        x2, y2 = wall_x2[pick], wall_y2[pick]
+        mid_x = (x1 + x2) // 2
+        mid_y = (y1 + y2) // 2
+
+        root_a = _find(parents, maze_dim * y1 + x1)
+        root_b = _find(parents, maze_dim * y2 + x2)
+        can = (grid[(mid_y + MAZE_OFFSET) * array_dim + mid_x + MAZE_OFFSET] == WALL_OBJ) & (root_a != root_b)
+
+        opened = jnp.stack(
+            [
+                (y1 + MAZE_OFFSET) * array_dim + x1 + MAZE_OFFSET,
+                (mid_y + MAZE_OFFSET) * array_dim + mid_x + MAZE_OFFSET,
+                (y2 + MAZE_OFFSET) * array_dim + x2 + MAZE_OFFSET,
+            ]
+        )
+        grid = jax.lax.cond(
+            can,
+            lambda g: g.at[opened].set(SPACE),
+            lambda g: g,
+            grid,
+        )
+        return grid, state, pick, can, root_a, root_b
+
+    def body(index, carry):
+        grid, parents, state, count, positions, wall_x1, wall_y1, wall_x2, wall_y2 = carry
+        grid, state, pick, can, root_a, root_b = carve(grid, parents, state, count, wall_x1, wall_y1, wall_x2, wall_y2)
+        parents = jnp.where(can, parents.at[root_a].set(root_b), parents)
+
+        # ``walls.erase(walls.begin() + pick)`` keeps the relative order.
+        keep = positions < pick
+        shifted = jnp.concatenate(
+            [
+                jnp.stack([wall_x1, wall_y1, wall_x2, wall_y2], axis=1)[1:],
+                jnp.zeros((1, 4), jnp.int32),
+            ]
+        )
+        current = jnp.stack([wall_x1, wall_y1, wall_x2, wall_y2], axis=1)
+        updated = jnp.where(keep[:, None], current, shifted)
+        count = count - 1
+        return (
+            grid,
+            parents,
+            state,
+            count,
+            positions,
+            updated[:, 0],
+            updated[:, 1],
+            updated[:, 2],
+            updated[:, 3],
+        )
+
+    carry = (grid, parents, state, remaining, positions, wall_x1, wall_y1, wall_x2, wall_y2)
+    grid, _, state, _, _, _, _, _, _ = jax.lax.fori_loop(0, total, body, carry)
+    return state, grid.reshape(array_dim, array_dim)
+
+
+def generate_maze_no_dead_ends(state: rng.Mt19937, maze_dim: int):
+    """``generate_maze`` then punch out one wall behind every dead end."""
+    array_dim = maze_dim + 2
+    size = array_dim * array_dim
+    state, grid = generate_maze(state, maze_dim)
+    flat = grid.reshape(size)
+
+    def body(index, carry):
+        flat, state = carry
+        nbr, valid = _neighbours(index, array_dim)
+        in_range = jnp.clip(nbr, 0, size - 1)
+        values = flat[in_range]
+        is_space = (values == SPACE) & valid
+        is_wall = (values == WALL_OBJ) & valid
+        dead_end = (flat[index] == SPACE) & (is_space.sum() == 1)
+
+        state, pick = jax.lax.cond(
+            dead_end & is_wall.any(),
+            lambda s: rng.randn(s, is_wall.sum()),
+            lambda s: (s, jnp.zeros((), jnp.int32)),
+            state,
+        )
+        order = jnp.argsort(jnp.where(is_wall, jnp.arange(4), 4))
+        target = in_range[order[pick]]
+        flat = jax.lax.cond(dead_end & is_wall.any(), lambda g: g.at[target].set(SPACE), lambda g: g, flat)
+        return flat, state
+
+    flat, state = jax.lax.fori_loop(0, size, body, (flat, state))
+    return state, flat.reshape(array_dim, array_dim)
