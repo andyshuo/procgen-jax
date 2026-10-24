@@ -19,8 +19,9 @@ synchronisation per step, and `jax.vmap` turnaround for free.
 | `plunder`  | ✅            | naval duel: cannonballs, target identification, juice meter  |
 | `heist`    | ✅            | locked maze: one key per door, grab the gem                  |
 | `starpilot`| ✅            | side-scrolling shooter on a 500 step spawn timeline          |
+| `dodgeball`| ✅            | arena split by lava walls, ball fights, one exit door        |
 
-The remaining 9 games are planned; see the roadmap below. Each game in the
+The remaining 8 games are planned; see the roadmap below. Each game in the
 original is only 121-523 lines of logic on top of a shared engine, so the
 incremental cost per game is small now that `procgen_jax/engine.py` exists.
 
@@ -264,7 +265,7 @@ These are deliberate first-milestone choices, not bugs:
 
 - [x] `coinrun` -- platformer physics, so the engine has a second consumer.
 - [x] Shared engine primitives (`Entity`, `is_blocked`, sub-stepped collisions).
-- [ ] Port the remaining 9 games (next: `jumper`, `dodgeball`, `chaser`).
+- [ ] Port the remaining 8 games (next: `jumper`, `chaser`, `ninja`).
 - [x] Sprite-based rendering (`pixi run atlas`).
 - [x] Level-parity harness against the C++ implementation (`pixi run reference`).
 - [ ] PPO baseline + throughput comparison against the original.

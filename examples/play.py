@@ -32,6 +32,7 @@ import numpy as np
 from procgen_jax import (
     BigFishEnv,
     CoinRunEnv,
+    DodgeballEnv,
     HeistEnv,
     LeaperEnv,
     MazeEnv,
@@ -140,6 +141,8 @@ def build(game: str, seed):
         env = HeistEnv(level_seed=seed)
     elif game == 'starpilot':
         env = StarPilotEnv(level_seed=seed)
+    elif game == 'dodgeball':
+        env = DodgeballEnv(level_seed=seed)
     else:
         env = CoinRunEnv(level_seed=seed)
     return env
@@ -148,7 +151,9 @@ def build(game: str, seed):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        '--game', default='coinrun', choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot']
+        '--game',
+        default='coinrun',
+        choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball'],
     )
     parser.add_argument('--seed', type=int, default=None, help='pin the level seed')
     parser.add_argument('--eager', action='store_true', help='do not jit the step (slow but literal)')
@@ -184,7 +189,7 @@ def main() -> int:
         total = 0.0
         for tick in range(args.auto):
             action = action_of(1, tick % 5 == 0)
-            if args.game in ('maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot'):
+            if args.game in ('maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball'):
                 action = int(rng.integers(0, 9))
             state = step(state, jnp.asarray(action))
             total += float(state.reward)

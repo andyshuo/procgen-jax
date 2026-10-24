@@ -24,6 +24,7 @@ import numpy as np
 from procgen_jax import (
     BigFishEnv,
     CoinRunEnv,
+    DodgeballEnv,
     HeistEnv,
     LeaperEnv,
     MazeEnv,
@@ -123,6 +124,8 @@ class Session:
             env = HeistEnv(level_seed=self.seed)
         elif self.game == 'starpilot':
             env = StarPilotEnv(level_seed=self.seed)
+        elif self.game == 'dodgeball':
+            env = DodgeballEnv(level_seed=self.seed)
         else:
             env = CoinRunEnv(level_seed=self.seed)
         self.step = jax.jit(env.step)
@@ -191,7 +194,9 @@ def make_handler(session: Session):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        '--game', default='coinrun', choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot']
+        '--game',
+        default='coinrun',
+        choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball'],
     )
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--port', type=int, default=8010)

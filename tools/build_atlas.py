@@ -96,6 +96,12 @@ def sprite_paths() -> dict[str, str]:
     )
     for name in starpilot:
         paths[f'misc/starpilot/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # dodgeball: the player, the enemies, the two balls, the door and the lava walls.
+    dodgeball = ['character12', 'ball_soccer1', 'blockRed', 'ball_soccer2', 'blockGreen', 'tileStone_slope2'] + [
+        f'character{index}' for index in range(1, 12)
+    ]
+    for name in dodgeball:
+        paths[f'misc/dodgeball/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 
