@@ -61,3 +61,10 @@ description = "Build the C++ level fixture in tests/data (needs the ProcGen sour
 
 [tasks.reference.env]
 PYTHONPATH = "."
+
+[tasks.maze-reference]
+cmd = "python tools/build_maze_reference.py"
+description = "Build the C++ maze fixture in tests/data (needs the ProcGen sources)"
+
+[tasks.maze-reference.env]
+PYTHONPATH = "."
