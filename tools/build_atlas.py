@@ -27,7 +27,8 @@ if 'SSL_CERT_FILE' not in os.environ and Path('/etc/ssl/certs/ca-certificates.cr
     os.environ['SSL_CERT_FILE'] = '/etc/ssl/certs/ca-certificates.crt'
 
 SIZE = 32
-ROOT = 'https://cdn.jsdelivr.net/gh/openai/procgen@master/procgen/data/assets/kenney/'
+ASSETS = 'https://cdn.jsdelivr.net/gh/openai/procgen@master/procgen/data/assets/'
+ROOT = ASSETS + 'kenney/'
 
 PLAYER_COLOURS = ['Beige', 'Blue', 'Green', 'Pink', 'Yellow']
 PLAYER_POSES = ['stand', 'jump', 'walk1', 'walk2']
@@ -54,7 +55,34 @@ def sprite_paths() -> dict[str, str]:
         paths[f'Tiles/{crate}'] = f'Tiles/{crate}.png'
     paths['Tiles/lava'] = 'Tiles/lava.png'
     paths['Tiles/lava_top'] = 'Tiles/lavaTop_low.png'
+    # bigfish: misc_assets live beside ``kenney/``, not inside it, so these carry
+    # their own absolute URL (bigfish.cpp's asset_for_type).
+    for tile in ('072', '074', '078', '080'):
+        paths[f'misc/fish{tile}'] = f'{ASSETS}misc_assets/fishTile_{tile}.png'
     return paths
+
+
+def image_size(path: Path) -> tuple[int, int]:
+    """Source dimensions, which the games need for ``match_aspect_ratio``."""
+    out = subprocess.run(
+        [
+            'ffprobe',
+            '-v',
+            'error',
+            '-select_streams',
+            'v:0',
+            '-show_entries',
+            'stream=width,height',
+            '-of',
+            'csv=p=0',
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    width, height = out.split(',')[:2]
+    return int(width), int(height)
 
 
 def decode(path: Path, size: int = SIZE) -> np.ndarray:
@@ -90,17 +118,21 @@ def main() -> None:
 
     names = ['_transparent', *paths]
     atlas = np.zeros((len(names), SIZE, SIZE, 4), np.uint8)
+    aspects = np.ones(len(names), np.float32)
 
     for row, name in enumerate(paths, start=1):
         png = cache / (name.replace('/', '_') + '.png')
         if not png.exists():
-            png.write_bytes(urllib.request.urlopen(ROOT + paths[name], timeout=60).read())
+            url = paths[name]
+            png.write_bytes(urllib.request.urlopen(url if url.startswith('http') else ROOT + url, timeout=60).read())
         atlas[row] = decode(png)
+        width, height = image_size(png)
+        aspects[row] = width / height
 
     out = Path('procgen_jax/data')
     out.mkdir(exist_ok=True)
     target = out / 'sprites.npz'
-    np.savez_compressed(target, pixels=atlas, names=np.asarray(names))
+    np.savez_compressed(target, pixels=atlas, names=np.asarray(names), aspects=aspects)
 
     print(f'{len(names)} sprites of {SIZE}x{SIZE} -> {target} ({target.stat().st_size // 1024} KiB)')
     for row, name in enumerate(names):

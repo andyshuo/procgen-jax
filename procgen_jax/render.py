@@ -160,6 +160,7 @@ def render_textured(
     view_tiles: int,
     out_of_bounds,
     obs_size: int = OBS_SIZE,
+    background=SKY_COLOUR,
 ):
     """Same camera as :func:`render_scene`, but sampling the sprite atlas.
 
@@ -180,7 +181,7 @@ def render_textured(
     tex_x = jnp.clip((world_x % 1.0) * sprite, 0, sprite - 1).astype(jnp.int32)
     tex_y = jnp.clip((1.0 - world_y % 1.0) * sprite, 0, sprite - 1).astype(jnp.int32)
     image = _blend(
-        jnp.broadcast_to(jnp.asarray(SKY_COLOUR, jnp.float32), (*tiles.shape, 3)), atlas[tile_rows[tiles], tex_y, tex_x]
+        jnp.broadcast_to(jnp.asarray(background, jnp.float32), (*tiles.shape, 3)), atlas[tile_rows[tiles], tex_y, tex_x]
     )
 
     # Entities are bodies of size (2*rx, 2*ry*height_scale) in world units.

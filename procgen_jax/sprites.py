@@ -17,16 +17,17 @@ SIZE = 32
 
 
 def load(path: Path = ATLAS_FILE):
-    """Return ``(pixels, index)``: the atlas and a name -> row mapping."""
+    """Return ``(pixels, index, aspects)``: atlas, name -> row, width/height."""
     if not path.exists():
         raise FileNotFoundError(f'{path} is missing; run `pixi run atlas` to download the Kenney assets')
     data = np.load(path)
     pixels = jnp.asarray(data['pixels'])
+    aspects = jnp.asarray(data['aspects'], jnp.float32)
     index = {str(name): row for row, name in enumerate(data['names'])}
-    return pixels, index
+    return pixels, index, aspects
 
 
-PIXELS, INDEX = load()
+PIXELS, INDEX, ASPECTS = load()
 
 
 def row(name: str) -> int:
