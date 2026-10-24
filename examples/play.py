@@ -33,6 +33,7 @@ from procgen_jax import (
     BigFishEnv,
     CoinRunEnv,
     DodgeballEnv,
+    FruitBotEnv,
     HeistEnv,
     LeaperEnv,
     MazeEnv,
@@ -143,6 +144,8 @@ def build(game: str, seed):
         env = StarPilotEnv(level_seed=seed)
     elif game == 'dodgeball':
         env = DodgeballEnv(level_seed=seed)
+    elif game == 'fruitbot':
+        env = FruitBotEnv(level_seed=seed)
     else:
         env = CoinRunEnv(level_seed=seed)
     return env
@@ -153,7 +156,7 @@ def main() -> int:
     parser.add_argument(
         '--game',
         default='coinrun',
-        choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball'],
+        choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball', 'fruitbot'],
     )
     parser.add_argument('--seed', type=int, default=None, help='pin the level seed')
     parser.add_argument('--eager', action='store_true', help='do not jit the step (slow but literal)')
@@ -189,7 +192,7 @@ def main() -> int:
         total = 0.0
         for tick in range(args.auto):
             action = action_of(1, tick % 5 == 0)
-            if args.game in ('maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball'):
+            if args.game in ('maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot', 'dodgeball', 'fruitbot'):
                 action = int(rng.integers(0, 9))
             state = step(state, jnp.asarray(action))
             total += float(state.reward)

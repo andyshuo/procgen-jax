@@ -102,6 +102,16 @@ def sprite_paths() -> dict[str, str]:
     ]
     for name in dodgeball:
         paths[f'misc/dodgeball/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # fruitbot: the robot, the barriers, the key projectile, the lock and door, the
+    # presents, and six fruits and six junk foods.
+    fruitbot = (
+        ['robot_3Dblue', 'tileStone_slope', 'keyRed2', 'fenceYellow', 'lockRed2']
+        + [f'fruit{index}' for index in range(1, 7)]
+        + [f'food{index}' for index in range(1, 7)]
+        + [f'present{index}' for index in range(1, 4)]
+    )
+    for name in fruitbot:
+        paths[f'misc/fruitbot/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 
