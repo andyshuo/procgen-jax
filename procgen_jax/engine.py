@@ -50,6 +50,9 @@ class Entity(NamedTuple):
     is_reflected: jax.Array
     life_time: jax.Array
     expire_time: jax.Array
+    spawn_time: jax.Array
+    fire_time: jax.Array
+    health: jax.Array
     collides_with_entities: jax.Array
     render_z: jax.Array
     smart_step: jax.Array
@@ -67,6 +70,9 @@ def entity(
     image_type=None,
     image_theme=0,
     is_reflected=False,
+    spawn_time=0,
+    fire_time=0,
+    health=0,
     life_time=0,
     expire_time=0,
     collides_with_entities=False,
@@ -86,6 +92,9 @@ def entity(
         image_type=jnp.asarray(type if image_type is None else image_type, dtype=jnp.int32),
         image_theme=jnp.asarray(image_theme, dtype=jnp.int32),
         is_reflected=jnp.asarray(is_reflected),
+        spawn_time=jnp.asarray(spawn_time, dtype=jnp.int32),
+        fire_time=jnp.asarray(fire_time, dtype=jnp.int32),
+        health=jnp.asarray(health, dtype=jnp.float32),
         life_time=jnp.asarray(life_time, dtype=jnp.int32),
         expire_time=jnp.asarray(expire_time, dtype=jnp.int32),
         collides_with_entities=jnp.asarray(collides_with_entities),

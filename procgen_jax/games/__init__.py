@@ -6,5 +6,6 @@ from procgen_jax.games.heist import HeistEnv
 from procgen_jax.games.leaper import LeaperEnv
 from procgen_jax.games.maze import MazeEnv
 from procgen_jax.games.plunder import PlunderEnv
+from procgen_jax.games.starpilot import StarPilotEnv
 
-__all__ = ['BigFishEnv', 'CoinRunEnv', 'HeistEnv', 'LeaperEnv', 'MazeEnv', 'PlunderEnv']
+__all__ = ['BigFishEnv', 'CoinRunEnv', 'HeistEnv', 'LeaperEnv', 'MazeEnv', 'PlunderEnv', 'StarPilotEnv']

@@ -29,7 +29,15 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from procgen_jax import BigFishEnv, CoinRunEnv, HeistEnv, LeaperEnv, MazeEnv, PlunderEnv
+from procgen_jax import (
+    BigFishEnv,
+    CoinRunEnv,
+    HeistEnv,
+    LeaperEnv,
+    MazeEnv,
+    PlunderEnv,
+    StarPilotEnv,
+)
 from procgen_jax.recording import encode_video
 
 CLEAR = '\x1b[H\x1b[2J'
@@ -130,6 +138,8 @@ def build(game: str, seed):
         env = PlunderEnv(level_seed=seed)
     elif game == 'heist':
         env = HeistEnv(level_seed=seed)
+    elif game == 'starpilot':
+        env = StarPilotEnv(level_seed=seed)
     else:
         env = CoinRunEnv(level_seed=seed)
     return env
@@ -138,7 +148,7 @@ def build(game: str, seed):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        '--game', default='coinrun', choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist']
+        '--game', default='coinrun', choices=['coinrun', 'maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot']
     )
     parser.add_argument('--seed', type=int, default=None, help='pin the level seed')
     parser.add_argument('--eager', action='store_true', help='do not jit the step (slow but literal)')
@@ -174,7 +184,7 @@ def main() -> int:
         total = 0.0
         for tick in range(args.auto):
             action = action_of(1, tick % 5 == 0)
-            if args.game in ('maze', 'bigfish', 'leaper', 'plunder', 'heist'):
+            if args.game in ('maze', 'bigfish', 'leaper', 'plunder', 'heist', 'starpilot'):
                 action = int(rng.integers(0, 9))
             state = step(state, jnp.asarray(action))
             total += float(state.reward)

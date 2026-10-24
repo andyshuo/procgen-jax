@@ -83,6 +83,19 @@ def sprite_paths() -> dict[str, str]:
         'lock_red',
     ):
         paths[f'misc/heist/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # starpilot: player ship, bullets, enemy ships, meteors, clouds, turrets and the
+    # finish-line rocket (starpilot.cpp's asset_for_type).
+    starpilot = (
+        ['playerShip2_blue', 'towerDefense_tile295', 'towerDefense_tile296', 'towerDefense_tile297']
+        + [f'spaceShips_{index:03d}' for index in range(1, 8)]
+        + [f'spaceMeteors_{index:03d}' for index in range(1, 5)]
+        + [f'meteorGrey_big{index}' for index in range(1, 5)]
+        + [f'spaceEffect{index}' for index in range(1, 10)]
+        + ['spaceStation_018', 'spaceStation_019']
+        + [f'spaceRockets_{index:03d}' for index in range(1, 5)]
+    )
+    for name in starpilot:
+        paths[f'misc/starpilot/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 

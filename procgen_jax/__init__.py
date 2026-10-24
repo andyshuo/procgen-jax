@@ -11,6 +11,7 @@ from procgen_jax.games.heist import HeistEnv
 from procgen_jax.games.leaper import LeaperEnv
 from procgen_jax.games.maze import MazeEnv
 from procgen_jax.games.plunder import PlunderEnv
+from procgen_jax.games.starpilot import StarPilotEnv
 from procgen_jax.version import __version__
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     'LeaperEnv',
     'MazeEnv',
     'PlunderEnv',
+    'StarPilotEnv',
     'State',
     'Wrapper',
     'auto_reset',
