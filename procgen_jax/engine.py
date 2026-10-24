@@ -50,6 +50,8 @@ class Entity(NamedTuple):
     is_reflected: jax.Array
     life_time: jax.Array
     expire_time: jax.Array
+    rotation: jax.Array
+    vrot: jax.Array
     spawn_time: jax.Array
     fire_time: jax.Array
     health: jax.Array
@@ -70,6 +72,8 @@ def entity(
     image_type=None,
     image_theme=0,
     is_reflected=False,
+    rotation=0.0,
+    vrot=0.0,
     spawn_time=0,
     fire_time=0,
     health=0,
@@ -92,6 +96,8 @@ def entity(
         image_type=jnp.asarray(type if image_type is None else image_type, dtype=jnp.int32),
         image_theme=jnp.asarray(image_theme, dtype=jnp.int32),
         is_reflected=jnp.asarray(is_reflected),
+        rotation=jnp.asarray(rotation, dtype=jnp.float32),
+        vrot=jnp.asarray(vrot, dtype=jnp.float32),
         spawn_time=jnp.asarray(spawn_time, dtype=jnp.int32),
         fire_time=jnp.asarray(fire_time, dtype=jnp.int32),
         health=jnp.asarray(health, dtype=jnp.float32),
@@ -297,6 +303,7 @@ def entity_step(ent: Entity) -> Entity:
     """
     free = ~ent.smart_step
     moved = ent._replace(
+        rotation=ent.rotation + ent.vrot,
         x=jnp.where(free, ent.x + ent.vx, ent.x),
         y=jnp.where(free, ent.y + ent.vy, ent.y),
         life_time=ent.life_time + 1,

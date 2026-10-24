@@ -140,6 +140,19 @@ def sprite_paths() -> dict[str, str]:
         'tileStone_slope',
     ):
         paths[f'misc/chaser/{name}'] = f'{ASSETS}misc_assets/{name}.png'
+    # caveflyer: two saucers, a meteor, the laser, the enemy ship, the player ship,
+    # the cave ground tile and the exhaust puff.
+    for name in (
+        'ufoGreen2',
+        'meteorBrown_big1',
+        'ufoRed2',
+        'laserBlue02',
+        'enemyShipBlue4',
+        'playerShip1_red',
+        'groundA',
+        'towerDefense_tile295',
+    ):
+        paths[f'misc/caveflyer/{name}'] = f'{ASSETS}misc_assets/{name}.png'
     return paths
 
 

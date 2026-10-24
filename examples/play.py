@@ -31,6 +31,7 @@ import numpy as np
 
 from procgen_jax import (
     BigFishEnv,
+    CaveFlyerEnv,
     ChaserEnv,
     CoinRunEnv,
     DodgeballEnv,
@@ -152,6 +153,8 @@ def build(game: str, seed):
         env = JumperEnv(level_seed=seed)
     elif game == 'chaser':
         env = ChaserEnv(level_seed=seed)
+    elif game == 'caveflyer':
+        env = CaveFlyerEnv(level_seed=seed)
     else:
         env = CoinRunEnv(level_seed=seed)
     return env
@@ -174,6 +177,7 @@ def main() -> int:
             'fruitbot',
             'jumper',
             'chaser',
+            'caveflyer',
         ],
     )
     parser.add_argument('--seed', type=int, default=None, help='pin the level seed')
