@@ -49,6 +49,8 @@ jobs:
         with:
           pixi-version: latest
           cache: true
+      # runners do not ship uv, and the pixi env has no pip/build frontend
+      - uses: astral-sh/setup-uv@v5
       - run: uv build
       # A wheel without the sprite atlas looks fine from a checkout and breaks on
       # install, so build one and construct envs from the installed copy only.
