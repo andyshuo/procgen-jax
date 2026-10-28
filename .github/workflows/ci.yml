@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          pixi-version: latest
+          cache: true
+      - run: pixi run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          pixi-version: latest
+          cache: true
+      # The whole suite is ~20 minutes (every game is jitted per module), so CI runs
+      # the engine, RNG, interface and packaging tests, which is where regressions
+      # show up first. Run `pixi run test` locally before tagging a release.
+      - run: >
+          pixi run python -m pytest -q
+          tests/test_engine.py
+          tests/test_env.py
+          tests/test_rng.py
+          tests/test_packaging.py
+          tests/test_maze.py
+          tests/test_coinrun.py
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          pixi-version: latest
+          cache: true
+      - run: uv build
+      # A wheel without the sprite atlas looks fine from a checkout and breaks on
+      # install, so build one and construct envs from the installed copy only.
+      - name: install the wheel and run envs
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install --quiet dist/*.whl
+          cd /tmp && /tmp/venv/bin/python "$GITHUB_WORKSPACE/tools/check_wheel.py"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
