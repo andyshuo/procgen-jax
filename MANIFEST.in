@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include pixi.toml
+recursive-include procgen_jax/data *.npz
+recursive-include tests/data *.npz
+recursive-include docs *.gif

@@ -23,6 +23,10 @@ gpu = { features = ["gpu"], solve-group = "gpu" }
 test = { cmd = "python -m pytest -q", description = "Run the test suite" }
 lint = { cmd = "ruff check . && ruff format --check .", description = "Lint and formatting check" }
 fmt = { cmd = "ruff format .", description = "Format the code" }
+[tasks.pack]
+cmd = "python -m build"
+description = "Build the wheel and sdist into dist/ (needs `build`: pixi install after adding it, or `uv build`)"
+
 [tasks.demo]
 cmd = "python examples/random_rollout.py"
 description = "Run a random rollout"

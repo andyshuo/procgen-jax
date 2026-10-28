@@ -79,9 +79,21 @@ compiles `step` once at start-up and then runs at 20 fps; rendering is always ea
 
 ## Install
 
+As a package (needs `jax>=0.12` and `numpy>=2`; the sprite atlas ships inside the
+wheel, so nothing is downloaded at import time):
+
+```bash
+pip install procgen_jax            # once it is on PyPI
+pip install "git+https://github.com/andyshuo/procgen-jax"   # or straight from source
+```
+
+For development, with the pinned toolchain and the C++ level fixtures:
+
 ```bash
 pixi install          # CPU JAX
 pixi install -e gpu   # CUDA 12 JAX
+pixi run test         # the full suite
+pixi run pack         # build dist/procgen_jax-*.whl and .tar.gz
 ```
 
 ## Usage
@@ -287,5 +299,8 @@ pixi run lint   # ruff check + format check
 
 ## License
 
-No license has been chosen yet, so no rights to use, modify or redistribute are
-granted. Ask the author first.
+MIT -- see [LICENSE](LICENSE).
+
+The sprite atlas is derived from the art bundled with
+[OpenAI ProcGen](https://github.com/openai/procgen) (originally by
+[Kenney](https://kenney.nl), CC0); those images keep their original terms.

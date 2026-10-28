@@ -4,20 +4,39 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "procgen-jax"
-version = "0.1.0"
+version = "1.0.0"
 description = "OpenAI ProcGen reimplemented in pure JAX, so a whole rollout compiles into one lax.scan"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
+authors = [{ name = "andyshuo" }]
+keywords = ["jax", "reinforcement-learning", "procedural-generation", "procgen", "gymnax", "brax", "environments"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "jax>=0.12",
     "numpy>=2",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff==0.17.1"]
+dev = ["pytest>=8.0", "ruff==0.17.1", "build>=1.2"]
 
-[tool.setuptools]
-packages = ["procgen_jax"]
+[project.urls]
+Homepage = "https://github.com/andyshuo/procgen-jax"
+Source = "https://github.com/andyshuo/procgen-jax"
+Issues = "https://github.com/andyshuo/procgen-jax/issues"
+
+[tool.setuptools.packages.find]
+include = ["procgen_jax*"]
+
+[tool.setuptools.package-data]
+procgen_jax = ["data/*.npz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -12,6 +12,8 @@ dist/
 .ruff_cache/
 
 # Downloaded reference material / build caches
+.uv-cache/
+.verify/
 .atlas_cache/
 .reference_cache/
 .randgen_ref/
