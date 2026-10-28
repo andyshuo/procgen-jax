@@ -155,6 +155,41 @@ Recording is deliberately *not* a `Wrapper`: a wrapper that accumulated frames w
 either grow a pytree leaf every step, which breaks `scan`'s static carry, or call
 back into the host, which breaks `jit`.
 
+## Baselines
+
+`procgen_jax.baselines.ppo` is a PPO with no framework behind it: plain `jax.numpy`
+arrays, a hand-written Adam, and one `lax.scan` around the whole training loop, so it
+can be compiled as a single program or run eagerly to measure what compilation buys.
+
+```bash
+pixi run train -- --game maze --updates 200
+pixi run train -- --game maze --compare      # jitted vs the identical program, eager
+pixi run train -- --game coinrun --env-only  # environment throughput on its own
+```
+
+Measured here (CPU, 8 envs x 64 steps, `jax 0.12`, `f32`):
+
+| what | eager | jit | speedup |
+| ---- | ----: | --: | ------: |
+| `maze` environment only | 302 steps/s | 17,445 steps/s | **58x** |
+| `coinrun` environment only | 25 steps/s | 749 steps/s | **30x** |
+| full PPO update, `maze` | 991 steps/s | 3,199 steps/s | 3.2x |
+| full PPO update, `coinrun` | 135 steps/s | 547 steps/s | 4.0x |
+
+The environment-only rows are the point of the repository: an episode is one fused
+`lax.scan` instead of thousands of Python-level transitions. The training rows are
+lower because the learner -- a 768-128-128 MLP with four epochs of minibatches -- is
+dispatch-bound in both modes, so once the environment is nearly free the update is the
+bottleneck, not the game.
+
+This is a baseline, not a solved result. The tests pin the maths down (GAE against a
+reference loop, `jit == eager` to 1e-5, gradient clipping, and the guard that stops an
+empty rollout from being trained on rounding error), and training runs end to end, but
+the default hyper-parameters do not solve even `maze` in the few hundred thousand
+steps a CPU session allows -- the policy stays close to uniform. ProcGen baselines are
+normally trained for millions of steps with reward normalisation, so treat
+`PPOConfig` as something to tune rather than a result to reproduce.
+
 ## Environment API
 
 The interface follows Brax's `Env`/`State` design rather than a gym-style
